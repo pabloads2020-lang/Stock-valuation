@@ -98,31 +98,49 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# FUNÇÃO PARA CRIAR O GRÁFICO BULLET GAUGE
+# FUNÇÃO PARA CRIAR O VELOCÍMETRO DE MEIO CÍRCULO
 # ============================================================
 
-def criar_bullet_gauge(margem):
-    """Cria um gráfico bullet gauge moderno no estilo Investment Bank"""
+def criar_velocimetro_moderno(margem):
+    """Cria um velocímetro de MEIO CÍRCULO (180°) moderno no estilo Investment Bank"""
     
-    # Define as cores e limites das faixas
     if margem is None:
         margem = 0
     
-    # Cria o gráfico bullet gauge
+    # Cria o gráfico de velocímetro (angular gauge - meio círculo)
     fig = go.Figure(go.Indicator(
-        mode = "gauge+number+delta",
-        value = margem,
-        number = {'suffix': "%", 'font': {'size': 40, 'color': "#0B1C3F", 'family': "Helvetica"}},
-        title = {'text': "Margem de Segurança", 'font': {'size': 14, 'color': "#4A5568"}},
-        gauge = {
-            'axis': {'range': [-50, 50], 'tickwidth': 1, 'tickcolor': "#8A8D91", 'tickfont': {'size': 10}},
-            'bar': {'color': "#C9A03D", 'thickness': 0.3},
-            'bgcolor': "white",
+        mode="gauge+number",
+        value=margem,
+        number={
+            'suffix': "%", 
+            'font': {'size': 48, 'color': "#0B1C3F", 'family': "Helvetica", 'weight': "bold"},
+            'valueformat': '.1f'
+        },
+        title={
+            'text': "MARGEM DE SEGURANÇA", 
+            'font': {'size': 14, 'color': "#4A5568", 'family': "Helvetica"}
+        },
+        gauge={
+            'axis': {
+                'range': [-100, 100],
+                'tickwidth': 1,
+                'tickcolor': "#8A8D91",
+                'tickfont': {'size': 10, 'color': "#4A5568"},
+                'ticks': 'outside',
+                'tickvals': [-100, -50, 0, 50, 100],
+                'ticktext': ['-100%', '-50%', '0%', '50%', '100%']
+            },
+            'bar': {
+                'color': "#C9A03D", 
+                'thickness': 0.3,
+                'line': {'color': "#0B1C3F", 'width': 1}
+            },
+            'bgcolor': "#F5F6F8",
             'borderwidth': 0,
             'steps': [
-                {'range': [-50, 0], 'color': "#C62828", 'name': "Sem Margem"},
-                {'range': [0, 20], 'color': "#F5F6F8", 'name': "Neutro"},
-                {'range': [20, 50], 'color': "#E8F5EE", 'name': "Com Margem"}
+                {'range': [-100, 0], 'color': "#C62828", 'name': "Sem Margem"},
+                {'range': [0, 20], 'color': "#F5A623", 'name': "Neutro"},
+                {'range': [20, 100], 'color': "#2E7D32", 'name': "Com Margem"}
             ],
             'threshold': {
                 'line': {'color': "#0B1C3F", 'width': 4},
@@ -132,12 +150,22 @@ def criar_bullet_gauge(margem):
         }
     ))
     
-    # Atualiza o layout
+    # Configura para ser MEIO CÍRCULO (180°)
     fig.update_layout(
-        height=250,
-        margin=dict(l=50, r=50, t=50, b=50),
+        height=300,
+        margin=dict(l=50, r=50, t=80, b=30),
         paper_bgcolor="#F5F6F8",
         font=dict(color="#0B1C3F", family="Helvetica")
+    )
+    
+    # Legenda das faixas
+    fig.add_annotation(
+        x=0.5, y=-0.15,
+        text="🔴 Sem Margem (<0%)    🟡 Neutro (0% a 20%)    🟢 Com Margem (≥20%)",
+        showarrow=False,
+        font=dict(size=10, color="#4A5568"),
+        xref="paper",
+        yref="paper"
     )
     
     return fig
@@ -345,25 +373,13 @@ if analisar:
                 </div>
                 """, unsafe_allow_html=True)
         
-        # ==================== NOVO GRÁFICO BULLET GAUGE ====================
+        # ==================== VELOCÍMETRO MODERNO ====================
         st.markdown("---")
         st.markdown("## 📊 ANÁLISE DE MARGEM DE SEGURANÇA")
         
         if dados['margem_seguranca']:
-            fig = criar_bullet_gauge(dados['margem_seguranca'])
+            fig = criar_velocimetro_moderno(dados['margem_seguranca'])
             st.plotly_chart(fig, use_container_width=True)
-            
-            # Legenda do gráfico
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.markdown("🔴 **Sem Margem**")
-                st.caption("Margem < 0%")
-            with col2:
-                st.markdown("🟡 **Neutro**")
-                st.caption("Margem 0% a 20%")
-            with col3:
-                st.markdown("🟢 **Com Margem**")
-                st.caption("Margem ≥ 20%")
         else:
             st.info("📊 Dados insuficientes para calcular a margem de segurança")
         
