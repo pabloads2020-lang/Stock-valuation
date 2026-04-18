@@ -100,16 +100,19 @@ st.markdown("""
 # ============================================================
 
 def criar_velocimetro_com_seta(margem):
-    """Cria um velocímetro com ponteiro em formato de seta (fina e comprida)"""
+    """Cria um velocímetro com ponteiro em formato de seta (fina e comprida) usando add_annotation"""
     
     if margem is None:
         margem = 0
     
-    # Converte a margem para ângulo (mapeamento: -100 graus a +100 graus -> -180 a 0 graus)
-    # No velocímetro, -100% fica à esquerda (-180°), 0% no meio (0°), +100% à direita (180°)
-    angulo = (margem / 100) * 180  # Agora vai de -180° a +180°
+    # Converte a margem para ângulo (mapeamento: -100% = -90°, +100% = +90°)
+    # Mapeamento: margem de -100 a 100 -> ângulo de -90 a +90 graus
+    angulo = (margem / 100) * 90  # Agora vai de -90° a +90°
     
-    # Cor do ponteiro baseado na margem
+    # Converte para radianos para o cálculo trigonométrico
+    angulo_rad = math.radians(angulo)
+    
+    # Define a cor do ponteiro baseado na margem
     if margem < 0:
         cor_ponteiro = "#C62828"  # Vermelho
     elif margem < 20:
@@ -117,30 +120,21 @@ def criar_velocimetro_com_seta(margem):
     else:
         cor_ponteiro = "#2E7D32"  # Verde
     
-    # Cria o gráfico base
-    fig = go.Figure()
+    # Raio do velocímetro (distância do centro até a ponta da seta)
+    raio = 0.75
+    # Distância do centro até a base da seta (para deixar um espaço no centro)
+    raio_base = 0.15
     
-    # Adiciona o arco do velocímetro com as faixas de cores
-    # Faixa Vermelha (-100 a 0)
-    fig.add_trace(go.Scatter(
-        x=[0], y=[0],
-        mode='markers',
-        marker=dict(size=1),
-        showlegend=False
-    ))
+    # Calcula as coordenadas da ponta da seta
+    x_ponta = raio * math.sin(angulo_rad)
+    y_ponta = raio * math.cos(angulo_rad)
     
-    # Configura o layout do velocímetro
-    fig.update_layout(
-        height=300,
-        width=600,
-        margin=dict(l=50, r=50, t=80, b=40),
-        paper_bgcolor="white",
-        plot_bgcolor="white",
-        font=dict(color="black", family="Arial")
-    )
+    # Calcula as coordenadas da base da seta
+    x_base = raio_base * math.sin(angulo_rad)
+    y_base = raio_base * math.cos(angulo_rad)
     
-    # Usa o gráfico de indicador do Plotly para o arco e número
-    fig_indicator = go.Figure(go.Indicator(
+    # Cria o gráfico de indicador (apenas o arco, sem o ponteiro padrão)
+    fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=margem,
         number={
@@ -153,17 +147,18 @@ def criar_velocimetro_com_seta(margem):
             'font': {'size': 14, 'color': "gray", 'family': "Arial"}
         },
         gauge={
+            'shape': 'angular',
             'axis': {
                 'range': [-100, 100],
                 'tickwidth': 2,
                 'tickcolor': "black",
-                'ticklen': 12,
+                'ticklen': 10,
                 'tickfont': {'size': 11, 'color': "black", 'family': "Arial"},
                 'ticks': 'outside',
                 'tickvals': [-100, -75, -50, -25, 0, 25, 50, 75, 100],
                 'ticktext': ['-100', '', '-50', '', '0', '', '50', '', '100']
             },
-            'bar': {'color': "black", 'thickness': 0.05, 'line': {'color': "black", 'width': 1}},
+            'bar': {'color': "black", 'thickness': 0.03, 'line': {'color': "black", 'width': 1}},
             'bgcolor': "white",
             'borderwidth': 0,
             'steps': [
@@ -171,23 +166,53 @@ def criar_velocimetro_com_seta(margem):
                 {'range': [0, 20], 'color': "#FDD835", 'thickness': 0.6},
                 {'range': [20, 100], 'color': "#43A047", 'thickness': 0.6}
             ],
-            'threshold': {
-                'line': {'color': cor_ponteiro, 'width': 3},
-                'thickness': 0.8,
-                'value': margem
-            }
+            # Remove o threshold padrão (linha) para usar nossa seta
+            'threshold': {'line': {'color': "white", 'width': 0}, 'value': margem}
         }
     ))
     
-    # Atualiza o layout
-    fig_indicator.update_layout(
-        height=300,
-        margin=dict(l=40, r=40, t=70, b=30),
+    # Atualiza o layout para coordenadas que vão de -1 a 1 no eixo X e 0 a 1 no eixo Y
+    # Isso facilita o cálculo das coordenadas da seta
+    fig.update_layout(
+        height=350,
+        width=600,
+        margin=dict(l=30, r=30, t=70, b=40),
         paper_bgcolor="white",
-        font=dict(color="black", family="Arial")
+        font=dict(color="black", family="Arial"),
+        xaxis={'showgrid': False, 'showticklabels': False, 'range': [-1.2, 1.2]},
+        yaxis={'showgrid': False, 'showticklabels': False, 'range': [0, 1.2]},
+        plot_bgcolor='rgba(0,0,0,0)'
     )
     
-    return fig_indicator
+    # Adiciona o ponteiro como uma anotação (seta)
+    fig.add_annotation(
+        ax=0,           # Ponto de origem X (centro)
+        ay=0,           # Ponto de origem Y (centro)
+        axref='x',
+        ayref='y',
+        x=x_ponta,      # Ponto final X
+        y=y_ponta,      # Ponto final Y
+        xref='x',
+        yref='y',
+        showarrow=True,
+        arrowhead=2,    # Estilo da ponta da seta
+        arrowsize=1.5,
+        arrowwidth=3,
+        arrowcolor=cor_ponteiro,
+        opacity=1
+    )
+    
+    # Adiciona um círculo central para dar acabamento
+    fig.add_shape(
+        type="circle",
+        xref="x", yref="y",
+        x0=-0.08, y0=-0.08, x1=0.08, y1=0.08,
+        fillcolor=cor_ponteiro,
+        line_color=cor_ponteiro,
+        opacity=0.9
+    )
+    
+    return fig
 
 # ============================================================
 # FUNÇÕES AUXILIARES
