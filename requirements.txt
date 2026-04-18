@@ -1,0 +1,7 @@
+streamlit
+yfinance
+deep-translator
+plotly
+pandas
+requests
+beautifulsoup4
