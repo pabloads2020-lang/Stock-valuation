@@ -4,7 +4,6 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
 import math
-import numpy as np
 from deep_translator import GoogleTranslator
 import requests
 
@@ -96,46 +95,37 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# FUNÇÃO PARA CRIAR O VELOCÍMETRO COM PONTEIRO (CORRIGIDA)
+# FUNÇÃO PARA CRIAR O VELOCÍMETRO (VERSÃO SIMPLES - SEM PONTEIRO)
 # ============================================================
 
-def criar_velocimetro_com_seta(margem):
-    """Cria um velocímetro com ponteiro na frente do número"""
+def criar_velocimetro_simples(margem):
+    """Cria um velocímetro simples com marcador (threshold) - sem seta"""
     
     if margem is None:
         margem = 0
     
-    # Converte a margem para ângulo (mapeamento: -100% = -90°, +100% = +90°)
-    angulo = (margem / 100) * 90
-    angulo_rad = math.radians(angulo)
-    
-    # Define a cor do ponteiro baseado na margem
+    # Define a cor do marcador baseado na margem
     if margem < 0:
-        cor_ponteiro = "#C62828"  # Vermelho
+        cor_marcador = "#C62828"  # Vermelho
     elif margem < 20:
-        cor_ponteiro = "#F5A623"  # Amarelo
+        cor_marcador = "#F5A623"  # Amarelo
     else:
-        cor_ponteiro = "#2E7D32"  # Verde
+        cor_marcador = "#2E7D32"  # Verde
     
-    # Raio do velocímetro
-    raio = 0.75
-    raio_base = 0.15
-    
-    # Calcula as coordenadas da seta
-    x_ponta = raio * math.sin(angulo_rad)
-    y_ponta = raio * math.cos(angulo_rad)
-    x_base = raio_base * math.sin(angulo_rad)
-    y_base = raio_base * math.cos(angulo_rad)
-    
-    # Cria o gráfico (sem número primeiro)
-    fig = go.Figure()
-    
-    # Adiciona o gauge (arco do velocímetro)
-    fig.add_trace(go.Indicator(
-        mode="gauge",
+    # Cria o gráfico de velocímetro
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
         value=margem,
+        number={
+            'suffix': "%", 
+            'font': {'size': 48, 'color': "black", 'family': "Arial", 'weight': "bold"},
+            'valueformat': '.1f'
+        },
+        title={
+            'text': "MARGEM DE SEGURANÇA", 
+            'font': {'size': 14, 'color': "gray", 'family': "Arial"}
+        },
         gauge={
-            'shape': 'angular',
             'axis': {
                 'range': [-100, 100],
                 'tickwidth': 2,
@@ -146,77 +136,28 @@ def criar_velocimetro_com_seta(margem):
                 'tickvals': [-100, -75, -50, -25, 0, 25, 50, 75, 100],
                 'ticktext': ['-100', '', '-50', '', '0', '', '50', '', '100']
             },
-            'bar': {'color': "black", 'thickness': 0.03},
+            'bar': {'color': "black", 'thickness': 0.03, 'line': {'color': "black", 'width': 1}},
             'bgcolor': "white",
             'borderwidth': 0,
             'steps': [
                 {'range': [-100, 0], 'color': "#E53935", 'thickness': 0.6},
                 {'range': [0, 20], 'color': "#FDD835", 'thickness': 0.6},
                 {'range': [20, 100], 'color': "#43A047", 'thickness': 0.6}
-            ]
+            ],
+            'threshold': {
+                'line': {'color': cor_marcador, 'width': 4},
+                'thickness': 0.8,
+                'value': margem
+            }
         }
     ))
     
     # Configura o layout
     fig.update_layout(
-        height=350,
-        width=600,
-        margin=dict(l=30, r=30, t=70, b=40),
+        height=300,
+        margin=dict(l=40, r=40, t=70, b=30),
         paper_bgcolor="white",
-        font=dict(color="black", family="Arial"),
-        xaxis={'showgrid': False, 'showticklabels': False, 'range': [-1.2, 1.2]},
-        yaxis={'showgrid': False, 'showticklabels': False, 'range': [0, 1.2]},
-        plot_bgcolor='rgba(0,0,0,0)'
-    )
-    
-    # Adiciona o número (agora em posição central, sem atrapalhar a seta)
-    fig.add_annotation(
-        x=0,
-        y=0.35,
-        text=f"{margem:.1f}%",
-        showarrow=False,
-        font=dict(size=36, color="black", family="Arial", weight="bold"),
-        xref="x",
-        yref="y"
-    )
-    
-    # Adiciona o título "MARGEM DE SEGURANÇA"
-    fig.add_annotation(
-        x=0,
-        y=1.05,
-        text="MARGEM DE SEGURANÇA",
-        showarrow=False,
-        font=dict(size=14, color="gray", family="Arial"),
-        xref="x",
-        yref="y"
-    )
-    
-    # Adiciona o ponteiro (seta) na FRENTE do número
-    fig.add_annotation(
-        ax=0,
-        ay=0,
-        axref='x',
-        ayref='y',
-        x=x_ponta,
-        y=y_ponta,
-        xref='x',
-        yref='y',
-        showarrow=True,
-        arrowhead=2,
-        arrowsize=1.5,
-        arrowwidth=3,
-        arrowcolor=cor_ponteiro,
-        opacity=1
-    )
-    
-    # Adiciona o círculo central
-    fig.add_shape(
-        type="circle",
-        xref="x", yref="y",
-        x0=-0.08, y0=-0.08, x1=0.08, y1=0.08,
-        fillcolor=cor_ponteiro,
-        line_color=cor_ponteiro,
-        opacity=0.9
+        font=dict(color="black", family="Arial")
     )
     
     return fig
@@ -424,12 +365,12 @@ if analisar:
                 </div>
                 """, unsafe_allow_html=True)
         
-        # ==================== VELOCÍMETRO COM SETA CORRIGIDO ====================
+        # ==================== VELOCÍMETRO SIMPLES ====================
         st.markdown("---")
         st.markdown("## 📊 ANÁLISE DE MARGEM DE SEGURANÇA")
         
         if dados['margem_seguranca']:
-            fig = criar_velocimetro_com_seta(dados['margem_seguranca'])
+            fig = criar_velocimetro_simples(dados['margem_seguranca'])
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("📊 Dados insuficientes para calcular a margem de segurança")
