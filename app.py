@@ -95,65 +95,56 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# FUNÇÃO PARA CRIAR O VELOCÍMETRO (ESTILO IMAGEM DE REFERÊNCIA)
+# FUNÇÃO PARA CRIAR O VELOCÍMETRO (CORRIGIDO COM PONTEIRO)
 # ============================================================
 
-def criar_velocimetro_estilo_referencia(margem):
-    """Cria um velocímetro idêntico ao estilo da imagem de referência"""
+def criar_velocimetro_corrigido(margem):
+    """Cria o velocímetro com ponteiro, fundo branco e marcas pretas"""
     
     if margem is None:
         margem = 0
-    
-    # Cria o gráfico de velocímetro
+
+    # Configuração do velocímetro
     fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=margem,
-        number={
+        mode = "gauge+number",
+        value = margem,
+        number = {
             'suffix': "%", 
-            'font': {'size': 56, 'color': "#000000", 'family': "Arial, Helvetica, sans-serif", 'weight': "bold"},
-            'valueformat': '.1f'
+            'font': {'size': 50, 'color': "black", 'family': "Arial"}
         },
-        title={
-            'text': "MARGEM DE SEGURANÇA", 
-            'font': {'size': 14, 'color': "#4A5568", 'family': "Arial, Helvetica, sans-serif"}
-        },
-        gauge={
+        title = {'text': "MARGEM DE SEGURANÇA", 'font': {'size': 14, 'color': "gray"}},
+        gauge = {
             'axis': {
                 'range': [-100, 100],
                 'tickwidth': 1,
-                'tickcolor': "#000000",
-                'tickfont': {'size': 10, 'color': "#000000", 'family': "Arial, Helvetica, sans-serif"},
-                'ticks': 'outside',
-                'ticklen': 8,
-                'tickvals': [-100, -75, -50, -25, 0, 25, 50, 75, 100],
-                'ticktext': ['-100', '', '-50', '', '0', '', '50', '', '100']
+                'tickcolor': "black",
+                'ticklen': 10,
+                'tickfont': {'size': 10, 'color': "black"},
+                'tickvals': [-100, -50, 0, 50, 100],
+                'ticktext': ["-100", "-50", "0", "50", "100"]
             },
-            'bar': {
-                'color': "#000000", 
-                'thickness': 0.15,
-                'line': {'color': "#000000", 'width': 1}
-            },
-            'bgcolor': "#FFFFFF",
+            'bar': {'color': "black", 'thickness': 0.05},
+            'bgcolor': "white",
             'borderwidth': 0,
             'steps': [
-                {'range': [-100, 0], 'color': "#E53935", 'name': "Sem Margem"},
-                {'range': [0, 20], 'color': "#FDD835", 'name': "Neutro"},
-                {'range': [20, 100], 'color': "#43A047", 'name': "Com Margem"}
+                {'range': [-100, 0], 'color': "#E53935"},   # Vermelho
+                {'range': [0, 20], 'color': "#FDD835"},     # Amarelo
+                {'range': [20, 100], 'color': "#43A047"}    # Verde
             ],
             'threshold': {
-                'line': {'color': "#000000", 'width': 2},
+                'line': {'color': "black", 'width': 2},
                 'thickness': 0.8,
                 'value': margem
             }
         }
     ))
-    
-    # Configura o layout para ficar igual à imagem de referência
+
+    # Ajustes finais de layout
     fig.update_layout(
-        height=300,
-        margin=dict(l=40, r=40, t=70, b=20),
-        paper_bgcolor="#FFFFFF",
-        font=dict(color="#000000", family="Arial, Helvetica, sans-serif")
+        height=250,
+        margin=dict(l=30, r=30, t=50, b=10),
+        paper_bgcolor="white",
+        font=dict(color="black")
     )
     
     return fig
@@ -361,12 +352,12 @@ if analisar:
                 </div>
                 """, unsafe_allow_html=True)
         
-        # ==================== VELOCÍMETRO ESTILO REFERÊNCIA ====================
+        # ==================== VELOCÍMETRO CORRIGIDO ====================
         st.markdown("---")
         st.markdown("## 📊 ANÁLISE DE MARGEM DE SEGURANÇA")
         
         if dados['margem_seguranca']:
-            fig = criar_velocimetro_estilo_referencia(dados['margem_seguranca'])
+            fig = criar_velocimetro_corrigido(dados['margem_seguranca'])
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("📊 Dados insuficientes para calcular a margem de segurança")
