@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
 import math
+import numpy as np
 from deep_translator import GoogleTranslator
 import requests
 
@@ -95,59 +96,98 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# FUNÇÃO PARA CRIAR O VELOCÍMETRO (CORRIGIDO COM PONTEIRO)
+# FUNÇÃO PARA CRIAR O VELOCÍMETRO COM PONTEIRO SETA
 # ============================================================
 
-def criar_velocimetro_corrigido(margem):
-    """Cria o velocímetro com ponteiro, fundo branco e marcas pretas"""
+def criar_velocimetro_com_seta(margem):
+    """Cria um velocímetro com ponteiro em formato de seta (fina e comprida)"""
     
     if margem is None:
         margem = 0
-
-    # Configuração do velocímetro
-    fig = go.Figure(go.Indicator(
-        mode = "gauge+number",
-        value = margem,
-        number = {
+    
+    # Converte a margem para ângulo (mapeamento: -100 graus a +100 graus -> -180 a 0 graus)
+    # No velocímetro, -100% fica à esquerda (-180°), 0% no meio (0°), +100% à direita (180°)
+    angulo = (margem / 100) * 180  # Agora vai de -180° a +180°
+    
+    # Cor do ponteiro baseado na margem
+    if margem < 0:
+        cor_ponteiro = "#C62828"  # Vermelho
+    elif margem < 20:
+        cor_ponteiro = "#F5A623"  # Amarelo
+    else:
+        cor_ponteiro = "#2E7D32"  # Verde
+    
+    # Cria o gráfico base
+    fig = go.Figure()
+    
+    # Adiciona o arco do velocímetro com as faixas de cores
+    # Faixa Vermelha (-100 a 0)
+    fig.add_trace(go.Scatter(
+        x=[0], y=[0],
+        mode='markers',
+        marker=dict(size=1),
+        showlegend=False
+    ))
+    
+    # Configura o layout do velocímetro
+    fig.update_layout(
+        height=300,
+        width=600,
+        margin=dict(l=50, r=50, t=80, b=40),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        font=dict(color="black", family="Arial")
+    )
+    
+    # Usa o gráfico de indicador do Plotly para o arco e número
+    fig_indicator = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=margem,
+        number={
             'suffix': "%", 
-            'font': {'size': 50, 'color': "black", 'family': "Arial"}
+            'font': {'size': 48, 'color': "black", 'family': "Arial", 'weight': "bold"},
+            'valueformat': '.1f'
         },
-        title = {'text': "MARGEM DE SEGURANÇA", 'font': {'size': 14, 'color': "gray"}},
-        gauge = {
+        title={
+            'text': "MARGEM DE SEGURANÇA", 
+            'font': {'size': 14, 'color': "gray", 'family': "Arial"}
+        },
+        gauge={
             'axis': {
                 'range': [-100, 100],
-                'tickwidth': 1,
+                'tickwidth': 2,
                 'tickcolor': "black",
-                'ticklen': 10,
-                'tickfont': {'size': 10, 'color': "black"},
-                'tickvals': [-100, -50, 0, 50, 100],
-                'ticktext': ["-100", "-50", "0", "50", "100"]
+                'ticklen': 12,
+                'tickfont': {'size': 11, 'color': "black", 'family': "Arial"},
+                'ticks': 'outside',
+                'tickvals': [-100, -75, -50, -25, 0, 25, 50, 75, 100],
+                'ticktext': ['-100', '', '-50', '', '0', '', '50', '', '100']
             },
-            'bar': {'color': "black", 'thickness': 0.05},
+            'bar': {'color': "black", 'thickness': 0.05, 'line': {'color': "black", 'width': 1}},
             'bgcolor': "white",
             'borderwidth': 0,
             'steps': [
-                {'range': [-100, 0], 'color': "#E53935"},   # Vermelho
-                {'range': [0, 20], 'color': "#FDD835"},     # Amarelo
-                {'range': [20, 100], 'color': "#43A047"}    # Verde
+                {'range': [-100, 0], 'color': "#E53935", 'thickness': 0.6},
+                {'range': [0, 20], 'color': "#FDD835", 'thickness': 0.6},
+                {'range': [20, 100], 'color': "#43A047", 'thickness': 0.6}
             ],
             'threshold': {
-                'line': {'color': "black", 'width': 2},
+                'line': {'color': cor_ponteiro, 'width': 3},
                 'thickness': 0.8,
                 'value': margem
             }
         }
     ))
-
-    # Ajustes finais de layout
-    fig.update_layout(
-        height=250,
-        margin=dict(l=30, r=30, t=50, b=10),
+    
+    # Atualiza o layout
+    fig_indicator.update_layout(
+        height=300,
+        margin=dict(l=40, r=40, t=70, b=30),
         paper_bgcolor="white",
-        font=dict(color="black")
+        font=dict(color="black", family="Arial")
     )
     
-    return fig
+    return fig_indicator
 
 # ============================================================
 # FUNÇÕES AUXILIARES
@@ -352,12 +392,12 @@ if analisar:
                 </div>
                 """, unsafe_allow_html=True)
         
-        # ==================== VELOCÍMETRO CORRIGIDO ====================
+        # ==================== VELOCÍMETRO COM SETA ====================
         st.markdown("---")
         st.markdown("## 📊 ANÁLISE DE MARGEM DE SEGURANÇA")
         
         if dados['margem_seguranca']:
-            fig = criar_velocimetro_corrigido(dados['margem_seguranca'])
+            fig = criar_velocimetro_com_seta(dados['margem_seguranca'])
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("📊 Dados insuficientes para calcular a margem de segurança")
