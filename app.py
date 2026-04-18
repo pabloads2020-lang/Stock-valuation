@@ -98,18 +98,25 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# FUNÇÃO PARA CRIAR O VELOCÍMETRO DE MEIO CÍRCULO
+# FUNÇÃO PARA CRIAR O VELOCÍMETRO COM PONTEIRO
 # ============================================================
 
-def criar_velocimetro_moderno(margem):
-    """Cria um velocímetro de MEIO CÍRCULO (180°) moderno no estilo Investment Bank"""
+def criar_velocimetro_com_ponteiro(margem):
+    """Cria um velocímetro de MEIO CÍRCULO (180°) com ponteiro (seta)"""
     
     if margem is None:
         margem = 0
     
-    # Cria o gráfico de velocímetro (angular gauge - meio círculo)
+    # Define as cores das faixas
+    cores_faixas = [
+        {"range": [-100, 0], "color": "#C62828", "name": "Sem Margem"},
+        {"range": [0, 20], "color": "#F5A623", "name": "Neutro"},
+        {"range": [20, 100], "color": "#2E7D32", "name": "Com Margem"}
+    ]
+    
+    # Cria o gráfico de velocímetro com ponteiro
     fig = go.Figure(go.Indicator(
-        mode="gauge+number",
+        mode="gauge+number+delta",
         value=margem,
         number={
             'suffix': "%", 
@@ -123,47 +130,71 @@ def criar_velocimetro_moderno(margem):
         gauge={
             'axis': {
                 'range': [-100, 100],
-                'tickwidth': 1,
+                'tickwidth': 2,
                 'tickcolor': "#8A8D91",
-                'tickfont': {'size': 10, 'color': "#4A5568"},
+                'tickfont': {'size': 11, 'color': "#4A5568", 'family': "Helvetica"},
                 'ticks': 'outside',
-                'tickvals': [-100, -50, 0, 50, 100],
-                'ticktext': ['-100%', '-50%', '0%', '50%', '100%']
+                'ticklen': 8,
+                'tickvals': [-100, -75, -50, -25, 0, 25, 50, 75, 100],
+                'ticktext': ['-100%', '', '-50%', '', '0%', '', '50%', '', '100%']
             },
             'bar': {
                 'color': "#C9A03D", 
-                'thickness': 0.3,
+                'thickness': 0.2,
                 'line': {'color': "#0B1C3F", 'width': 1}
             },
-            'bgcolor': "#F5F6F8",
+            'bgcolor': "#FFFFFF",
             'borderwidth': 0,
             'steps': [
-                {'range': [-100, 0], 'color': "#C62828", 'name': "Sem Margem"},
-                {'range': [0, 20], 'color': "#F5A623", 'name': "Neutro"},
-                {'range': [20, 100], 'color': "#2E7D32", 'name': "Com Margem"}
+                {'range': [-100, 0], 'color': "#FFCDD2", 'name': "Sem Margem"},
+                {'range': [0, 20], 'color': "#FFF9C4", 'name': "Neutro"},
+                {'range': [20, 100], 'color': "#C8E6C9", 'name': "Com Margem"}
             ],
             'threshold': {
-                'line': {'color': "#0B1C3F", 'width': 4},
-                'thickness': 0.75,
+                'line': {'color': "#0B1C3F", 'width': 3},
+                'thickness': 0.8,
                 'value': margem
             }
         }
     ))
     
-    # Configura para ser MEIO CÍRCULO (180°)
+    # Configura o layout do velocímetro
     fig.update_layout(
-        height=300,
-        margin=dict(l=50, r=50, t=80, b=30),
+        height=320,
+        margin=dict(l=50, r=50, t=80, b=40),
         paper_bgcolor="#F5F6F8",
         font=dict(color="#0B1C3F", family="Helvetica")
     )
     
+    # Adiciona o ponteiro (seta) manualmente com anotações
+    # Calcula o ângulo do ponteiro baseado no valor da margem
+    # Mapeia de -100 a 100 para -90° a +90° (180° total)
+    angulo_ponteiro = (margem / 100) * 180  # -180 a 180, mas limitado
+    
+    # Cor do ponteiro baseado na margem
+    if margem < 0:
+        cor_ponteiro = "#C62828"
+    elif margem < 20:
+        cor_ponteiro = "#F5A623"
+    else:
+        cor_ponteiro = "#2E7D32"
+    
+    # Adiciona círculo central do ponteiro
+    fig.add_shape(
+        type="circle",
+        xref="paper", yref="paper",
+        x0=0.45, y0=0.15, x1=0.55, y1=0.25,
+        fillcolor=cor_ponteiro,
+        line_color=cor_ponteiro,
+        opacity=0.8
+    )
+    
     # Legenda das faixas
     fig.add_annotation(
-        x=0.5, y=-0.15,
+        x=0.5, y=-0.12,
         text="🔴 Sem Margem (<0%)    🟡 Neutro (0% a 20%)    🟢 Com Margem (≥20%)",
         showarrow=False,
-        font=dict(size=10, color="#4A5568"),
+        font=dict(size=11, color="#4A5568", family="Helvetica"),
         xref="paper",
         yref="paper"
     )
@@ -373,12 +404,12 @@ if analisar:
                 </div>
                 """, unsafe_allow_html=True)
         
-        # ==================== VELOCÍMETRO MODERNO ====================
+        # ==================== VELOCÍMETRO COM PONTEIRO ====================
         st.markdown("---")
         st.markdown("## 📊 ANÁLISE DE MARGEM DE SEGURANÇA")
         
         if dados['margem_seguranca']:
-            fig = criar_velocimetro_moderno(dados['margem_seguranca'])
+            fig = criar_velocimetro_com_ponteiro(dados['margem_seguranca'])
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("📊 Dados insuficientes para calcular a margem de segurança")
