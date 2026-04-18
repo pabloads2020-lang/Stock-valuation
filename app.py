@@ -2,12 +2,10 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from datetime import datetime, timedelta
+from datetime import datetime
 import math
 from deep_translator import GoogleTranslator
 import requests
-import re
 
 # ============================================================
 # CONFIGURAÇÃO DA PÁGINA
@@ -25,7 +23,6 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* Estilo Investment Bank */
     .main {
         background-color: #F5F6F8;
     }
@@ -98,105 +95,65 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# FUNÇÃO PARA CRIAR O VELOCÍMETRO COM PONTEIRO
+# FUNÇÃO PARA CRIAR O VELOCÍMETRO (ESTILO IMAGEM DE REFERÊNCIA)
 # ============================================================
 
-def criar_velocimetro_com_ponteiro(margem):
-    """Cria um velocímetro de MEIO CÍRCULO (180°) com ponteiro (seta)"""
+def criar_velocimetro_estilo_referencia(margem):
+    """Cria um velocímetro idêntico ao estilo da imagem de referência"""
     
     if margem is None:
         margem = 0
     
-    # Define as cores das faixas
-    cores_faixas = [
-        {"range": [-100, 0], "color": "#C62828", "name": "Sem Margem"},
-        {"range": [0, 20], "color": "#F5A623", "name": "Neutro"},
-        {"range": [20, 100], "color": "#2E7D32", "name": "Com Margem"}
-    ]
-    
-    # Cria o gráfico de velocímetro com ponteiro
+    # Cria o gráfico de velocímetro
     fig = go.Figure(go.Indicator(
-        mode="gauge+number+delta",
+        mode="gauge+number",
         value=margem,
         number={
             'suffix': "%", 
-            'font': {'size': 48, 'color': "#0B1C3F", 'family': "Helvetica", 'weight': "bold"},
+            'font': {'size': 56, 'color': "#000000", 'family': "Arial, Helvetica, sans-serif", 'weight': "bold"},
             'valueformat': '.1f'
         },
         title={
             'text': "MARGEM DE SEGURANÇA", 
-            'font': {'size': 14, 'color': "#4A5568", 'family': "Helvetica"}
+            'font': {'size': 14, 'color': "#4A5568", 'family': "Arial, Helvetica, sans-serif"}
         },
         gauge={
             'axis': {
                 'range': [-100, 100],
-                'tickwidth': 2,
-                'tickcolor': "#8A8D91",
-                'tickfont': {'size': 11, 'color': "#4A5568", 'family': "Helvetica"},
+                'tickwidth': 1,
+                'tickcolor': "#000000",
+                'tickfont': {'size': 10, 'color': "#000000", 'family': "Arial, Helvetica, sans-serif"},
                 'ticks': 'outside',
                 'ticklen': 8,
                 'tickvals': [-100, -75, -50, -25, 0, 25, 50, 75, 100],
-                'ticktext': ['-100%', '', '-50%', '', '0%', '', '50%', '', '100%']
+                'ticktext': ['-100', '', '-50', '', '0', '', '50', '', '100']
             },
             'bar': {
-                'color': "#C9A03D", 
-                'thickness': 0.2,
-                'line': {'color': "#0B1C3F", 'width': 1}
+                'color': "#000000", 
+                'thickness': 0.15,
+                'line': {'color': "#000000", 'width': 1}
             },
             'bgcolor': "#FFFFFF",
             'borderwidth': 0,
             'steps': [
-                {'range': [-100, 0], 'color': "#FFCDD2", 'name': "Sem Margem"},
-                {'range': [0, 20], 'color': "#FFF9C4", 'name': "Neutro"},
-                {'range': [20, 100], 'color': "#C8E6C9", 'name': "Com Margem"}
+                {'range': [-100, 0], 'color': "#E53935", 'name': "Sem Margem"},
+                {'range': [0, 20], 'color': "#FDD835", 'name': "Neutro"},
+                {'range': [20, 100], 'color': "#43A047", 'name': "Com Margem"}
             ],
             'threshold': {
-                'line': {'color': "#0B1C3F", 'width': 3},
+                'line': {'color': "#000000", 'width': 2},
                 'thickness': 0.8,
                 'value': margem
             }
         }
     ))
     
-    # Configura o layout do velocímetro
+    # Configura o layout para ficar igual à imagem de referência
     fig.update_layout(
-        height=320,
-        margin=dict(l=50, r=50, t=80, b=40),
-        paper_bgcolor="#F5F6F8",
-        font=dict(color="#0B1C3F", family="Helvetica")
-    )
-    
-    # Adiciona o ponteiro (seta) manualmente com anotações
-    # Calcula o ângulo do ponteiro baseado no valor da margem
-    # Mapeia de -100 a 100 para -90° a +90° (180° total)
-    angulo_ponteiro = (margem / 100) * 180  # -180 a 180, mas limitado
-    
-    # Cor do ponteiro baseado na margem
-    if margem < 0:
-        cor_ponteiro = "#C62828"
-    elif margem < 20:
-        cor_ponteiro = "#F5A623"
-    else:
-        cor_ponteiro = "#2E7D32"
-    
-    # Adiciona círculo central do ponteiro
-    fig.add_shape(
-        type="circle",
-        xref="paper", yref="paper",
-        x0=0.45, y0=0.15, x1=0.55, y1=0.25,
-        fillcolor=cor_ponteiro,
-        line_color=cor_ponteiro,
-        opacity=0.8
-    )
-    
-    # Legenda das faixas
-    fig.add_annotation(
-        x=0.5, y=-0.12,
-        text="🔴 Sem Margem (<0%)    🟡 Neutro (0% a 20%)    🟢 Com Margem (≥20%)",
-        showarrow=False,
-        font=dict(size=11, color="#4A5568", family="Helvetica"),
-        xref="paper",
-        yref="paper"
+        height=300,
+        margin=dict(l=40, r=40, t=70, b=20),
+        paper_bgcolor="#FFFFFF",
+        font=dict(color="#000000", family="Arial, Helvetica, sans-serif")
     )
     
     return fig
@@ -404,12 +361,12 @@ if analisar:
                 </div>
                 """, unsafe_allow_html=True)
         
-        # ==================== VELOCÍMETRO COM PONTEIRO ====================
+        # ==================== VELOCÍMETRO ESTILO REFERÊNCIA ====================
         st.markdown("---")
         st.markdown("## 📊 ANÁLISE DE MARGEM DE SEGURANÇA")
         
         if dados['margem_seguranca']:
-            fig = criar_velocimetro_com_ponteiro(dados['margem_seguranca'])
+            fig = criar_velocimetro_estilo_referencia(dados['margem_seguranca'])
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("📊 Dados insuficientes para calcular a margem de segurança")
