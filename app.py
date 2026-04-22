@@ -368,69 +368,100 @@ if analisar:
         st.caption(f"Setor: {dados['setor']} | Segmento: {dados['segmento']} | Cotação atual: R$ {dados['cotacao']:.2f}")
         st.markdown("---")
         
-        # ==================== CARDS DOS 3 MODELOS ====================
-        col1, col2, col3 = st.columns(3)
+        # ==================== SELETOR COM ABAS ====================
+        st.markdown("## 📊 MODELOS DE VALUATION")
         
-        # Card Graham
-        with col1:
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.markdown('<div class="model-title">📘 BENJAMIN GRAHAM</div>', unsafe_allow_html=True)
-            if dados['valor_justo_graham']:
-                st.markdown(f'<div class="metric-value">R$ {dados["valor_justo_graham"]:.2f}</div>', unsafe_allow_html=True)
-                recomendacao, _ = calcular_recomendacao(dados['margem_graham'])
-                cor_classe = f"recomendacao-{recomendacao}"
-                st.markdown(f'<div class="recomendacao {cor_classe}">{recomendacao}</div>', unsafe_allow_html=True)
-                st.caption(f"Margem: {dados['margem_graham']:+.1f}%")
-            else:
-                st.markdown('<div class="metric-value">Dados insuficientes</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+        # Criar abas para cada modelo
+        tab1, tab2, tab3 = st.tabs(["📘 BENJAMIN GRAHAM", "💰 BAZIN (6%)", "📈 GORDON (GGM)"])
         
-        # Card Bazin
-        with col2:
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.markdown('<div class="model-title">💰 BAZIN (6%)</div>', unsafe_allow_html=True)
-            if dados['valor_justo_bazin']:
-                st.markdown(f'<div class="metric-value">R$ {dados["valor_justo_bazin"]:.2f}</div>', unsafe_allow_html=True)
-                recomendacao, _ = calcular_recomendacao(dados['margem_bazin'])
-                cor_classe = f"recomendacao-{recomendacao}"
-                st.markdown(f'<div class="recomendacao {cor_classe}">{recomendacao}</div>', unsafe_allow_html=True)
-                st.caption(f"Dividendo anual: R$ {dados['dividendos']:.2f}" if dados['dividendos'] else "Sem dividendos")
-            else:
-                st.markdown('<div class="metric-value">Dados insuficientes</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+        # ==================== ABA 1 - GRAHAM ====================
+        with tab1:
+            col1, col2 = st.columns([1, 1])
+            
+            with col1:
+                st.markdown("### 📊 Valuation Graham")
+                if dados['valor_justo_graham']:
+                    st.metric("Valor Justo", f"R$ {dados['valor_justo_graham']:.2f}")
+                    st.metric("Cotação Atual", f"R$ {dados['cotacao']:.2f}")
+                    st.metric("Margem de Segurança", f"{dados['margem_graham']:+.1f}%")
+                    recomendacao_graham, _ = calcular_recomendacao(dados['margem_graham'])
+                    if recomendacao_graham == "COMPRAR":
+                        st.success(f"✅ {recomendacao_graham}")
+                    elif recomendacao_graham == "COMPRA PARCIAL":
+                        st.warning(f"⚠️ {recomendacao_graham}")
+                    elif recomendacao_graham == "NEUTRO":
+                        st.info(f"⚖️ {recomendacao_graham}")
+                    else:
+                        st.error(f"❌ {recomendacao_graham}")
+                else:
+                    st.warning("Dados insuficientes para calcular o modelo Graham")
+            
+            with col2:
+                if dados['margem_graham']:
+                    fig_graham = criar_velocimetro(dados['margem_graham'], "MARGEM GRAHAM")
+                    st.plotly_chart(fig_graham, use_container_width=True)
+                else:
+                    st.info("Velocímetro indisponível")
         
-        # Card Gordon
-        with col3:
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.markdown('<div class="model-title">📈 GORDON (GGM)</div>', unsafe_allow_html=True)
-            if dados['valor_justo_gordon']:
-                st.markdown(f'<div class="metric-value">R$ {dados["valor_justo_gordon"]:.2f}</div>', unsafe_allow_html=True)
-                recomendacao, _ = calcular_recomendacao(dados['margem_gordon'])
-                cor_classe = f"recomendacao-{recomendacao}"
-                st.markdown(f'<div class="recomendacao {cor_classe}">{recomendacao}</div>', unsafe_allow_html=True)
-                st.caption("Crescimento: 4% | Retorno: 10%")
-            else:
-                st.markdown('<div class="metric-value">Dados insuficientes</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+        # ==================== ABA 2 - BAZIN ====================
+        with tab2:
+            col1, col2 = st.columns([1, 1])
+            
+            with col1:
+                st.markdown("### 💰 Valuation Bazin")
+                if dados['valor_justo_bazin']:
+                    st.metric("Valor Justo", f"R$ {dados['valor_justo_bazin']:.2f}")
+                    st.metric("Cotação Atual", f"R$ {dados['cotacao']:.2f}")
+                    st.metric("Dividendo Anual", f"R$ {dados['dividendos']:.2f}" if dados['dividendos'] else "N/D")
+                    st.metric("Margem de Segurança", f"{dados['margem_bazin']:+.1f}%")
+                    recomendacao_bazin, _ = calcular_recomendacao(dados['margem_bazin'])
+                    if recomendacao_bazin == "COMPRAR":
+                        st.success(f"✅ {recomendacao_bazin}")
+                    elif recomendacao_bazin == "COMPRA PARCIAL":
+                        st.warning(f"⚠️ {recomendacao_bazin}")
+                    elif recomendacao_bazin == "NEUTRO":
+                        st.info(f"⚖️ {recomendacao_bazin}")
+                    else:
+                        st.error(f"❌ {recomendacao_bazin}")
+                else:
+                    st.warning("Dados insuficientes para calcular o modelo Bazin")
+            
+            with col2:
+                if dados['margem_bazin']:
+                    fig_bazin = criar_velocimetro(dados['margem_bazin'], "MARGEM BAZIN")
+                    st.plotly_chart(fig_bazin, use_container_width=True)
+                else:
+                    st.info("Velocímetro indisponível")
         
-        st.markdown("---")
-        
-        # ==================== VELOCÍMETROS ====================
-        st.markdown("## 📊 MARGEM DE SEGURANÇA")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            fig_graham = criar_velocimetro(dados['margem_graham'], "GRAHAM")
-            st.plotly_chart(fig_graham, use_container_width=True)
-        
-        with col2:
-            fig_bazin = criar_velocimetro(dados['margem_bazin'], "BAZIN")
-            st.plotly_chart(fig_bazin, use_container_width=True)
-        
-        with col3:
-            fig_gordon = criar_velocimetro(dados['margem_gordon'], "GORDON")
-            st.plotly_chart(fig_gordon, use_container_width=True)
+        # ==================== ABA 3 - GORDON ====================
+        with tab3:
+            col1, col2 = st.columns([1, 1])
+            
+            with col1:
+                st.markdown("### 📈 Valuation Gordon (GGM)")
+                if dados['valor_justo_gordon']:
+                    st.metric("Valor Justo", f"R$ {dados['valor_justo_gordon']:.2f}")
+                    st.metric("Cotação Atual", f"R$ {dados['cotacao']:.2f}")
+                    st.metric("Dividendo Anual", f"R$ {dados['dividendos']:.2f}" if dados['dividendos'] else "N/D")
+                    st.metric("Margem de Segurança", f"{dados['margem_gordon']:+.1f}%")
+                    recomendacao_gordon, _ = calcular_recomendacao(dados['margem_gordon'])
+                    if recomendacao_gordon == "COMPRAR":
+                        st.success(f"✅ {recomendacao_gordon}")
+                    elif recomendacao_gordon == "COMPRA PARCIAL":
+                        st.warning(f"⚠️ {recomendacao_gordon}")
+                    elif recomendacao_gordon == "NEUTRO":
+                        st.info(f"⚖️ {recomendacao_gordon}")
+                    else:
+                        st.error(f"❌ {recomendacao_gordon}")
+                else:
+                    st.warning("Dados insuficientes para calcular o modelo Gordon")
+            
+            with col2:
+                if dados['margem_gordon']:
+                    fig_gordon = criar_velocimetro(dados['margem_gordon'], "MARGEM GORDON")
+                    st.plotly_chart(fig_gordon, use_container_width=True)
+                else:
+                    st.info("Velocímetro indisponível")
         
         st.markdown("---")
         
@@ -451,15 +482,21 @@ if analisar:
             margem_media = ((media_valor_justo - dados['cotacao']) / media_valor_justo) * 100
             recomendacao_final, mensagem = calcular_recomendacao(margem_media)
             
-            col1, col2 = st.columns([1, 1])
+            col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("📊 Média dos 3 Modelos", f"R$ {media_valor_justo:.2f}")
-                st.metric("📈 Upside médio", f"{(media_valor_justo/dados['cotacao'] - 1)*100:+.1f}%")
             with col2:
-                cor_classe = f"recomendacao-{recomendacao_final}"
-                st.markdown(f'<div class="recomendacao {cor_classe}" style="padding:20px;">'
-                           f'<h2 style="margin:0;">{recomendacao_final}</h2>'
-                           f'<p style="margin:5px 0 0 0;">{mensagem}</p></div>', unsafe_allow_html=True)
+                st.metric("📈 Upside médio", f"{(media_valor_justo/dados['cotacao'] - 1)*100:+.1f}%")
+            with col3:
+                if recomendacao_final == "COMPRAR":
+                    st.success(f"✅ RECOMENDAÇÃO: {recomendacao_final}")
+                elif recomendacao_final == "COMPRA PARCIAL":
+                    st.warning(f"⚠️ RECOMENDAÇÃO: {recomendacao_final}")
+                elif recomendacao_final == "NEUTRO":
+                    st.info(f"⚖️ RECOMENDAÇÃO: {recomendacao_final}")
+                else:
+                    st.error(f"❌ RECOMENDAÇÃO: {recomendacao_final}")
+                st.caption(mensagem)
         else:
             st.warning("⚠️ Dados insuficientes para calcular a média dos modelos")
         
