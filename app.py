@@ -60,19 +60,21 @@ st.markdown("""
     .recomendacao-EVITAR { background-color: #C62828; color: white; padding: 8px; border-radius: 8px; text-align: center; font-weight: bold; }
     h1, h2, h3 { color: #0B1C3F; }
     hr { margin: 20px 0; }
-    .indicator-box {
-        background-color: white;
-        border-radius: 8px;
-        padding: 10px;
-        margin: 5px;
-        border-left: 3px solid #C9A03D;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================
 # FUNÇÕES DE VALUATION
 # ============================================================
+
+def safe_format(value, format_str="{:.2f}", default="N/D"):
+    """Formata um valor com segurança, retornando default se for None"""
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return default
+    try:
+        return format_str.format(value)
+    except:
+        return default
 
 def calcular_graham(lpa, vpa):
     if lpa and vpa and lpa > 0 and vpa > 0:
@@ -96,7 +98,7 @@ def calcular_margem_seguranca(cotacao, valor_justo):
 
 def classificar_indicador(valor, tipo):
     """Classifica o indicador como bom, neutro ou ruim"""
-    if valor is None:
+    if valor is None or (isinstance(valor, float) and math.isnan(valor)):
         return "neutral", "N/D"
     
     if tipo == "pl":
@@ -184,7 +186,7 @@ def classificar_indicador(valor, tipo):
     return "neutral", ""
 
 def criar_velocimetro(margem, titulo):
-    if margem is None:
+    if margem is None or (isinstance(margem, float) and math.isnan(margem)):
         margem = 0
     
     if margem < 0:
@@ -269,15 +271,18 @@ def buscar_dados(ticker_input):
         # Endividamento
         divida_bruta = info.get('totalDebt', 0)
         caixa = info.get('totalCash', 0)
-        divida_liquida = divida_bruta - caixa
+        divida_liquida = divida_bruta - caixa if divida_bruta and caixa else None
         
         ebitda = info.get('ebitda', 0)
-        divida_ebitda = divida_liquida / ebitda if ebitda and ebitda > 0 else None
+        divida_ebitda = divida_liquida / ebitda if ebitda and ebitda > 0 and divida_liquida else None
         
         # Liquidez
         ativo_circulante = info.get('currentAssets', 0)
         passivo_circulante = info.get('currentLiabilities', 0)
         liquidez_corrente = ativo_circulante / passivo_circulante if passivo_circulante and passivo_circulante > 0 else None
+        
+        # Número de ações (para EV/EBITDA)
+        num_acoes = info.get('sharesOutstanding', 0)
         
         # Valuation
         valor_graham = calcular_graham(lpa, vpa)
@@ -301,6 +306,7 @@ def buscar_dados(ticker_input):
             "dividendos": dividendos,
             "dy": dy,
             "ebitda": ebitda,
+            "num_acoes": num_acoes,
             "divida_liquida": divida_liquida,
             "divida_ebitda": divida_ebitda,
             "margem_liquida": margem_liquida,
@@ -366,7 +372,7 @@ if analisar:
     if dados:
         # Cabeçalho
         st.markdown(f"## {dados['ticker']} - {dados['nome']}")
-        st.caption(f"Setor: {dados['setor']} | Segmento: {dados['segmento']} | Cotação: R$ {dados['cotacao']:.2f}")
+        st.caption(f"Setor: {dados['setor']} | Segmento: {dados['segmento']} | Cotação: R$ {safe_format(dados['cotacao'], 'R$ {:.2f}')}")
         st.markdown("---")
         
         # ==================== VALUATION MODELS ====================
@@ -389,7 +395,7 @@ if analisar:
                 else:
                     st.markdown('<div class="recomendacao-EVITAR">❌ EVITAR</div>', unsafe_allow_html=True)
             else:
-                st.markdown("Dados insuficientes")
+                st.markdown('<div class="metric-value">Dados insuficientes</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
         
         with col2:
@@ -408,7 +414,7 @@ if analisar:
                 else:
                     st.markdown('<div class="recomendacao-EVITAR">❌ EVITAR</div>', unsafe_allow_html=True)
             else:
-                st.markdown("Dados insuficientes")
+                st.markdown('<div class="metric-value">Dados insuficientes</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
         
         with col3:
@@ -427,7 +433,7 @@ if analisar:
                 else:
                     st.markdown('<div class="recomendacao-EVITAR">❌ EVITAR</div>', unsafe_allow_html=True)
             else:
-                st.markdown("Dados insuficientes")
+                st.markdown('<div class="metric-value">Dados insuficientes</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown("---")
@@ -455,30 +461,46 @@ if analisar:
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            classe, texto = classificar_indicador(dados['pl'], "pl")
-            cor = "good" if classe == "good" else ("bad" if classe == "bad" else "neutral")
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">P/L (Preço/Lucro)</div>
-                <div class="metric-value">{dados['pl']:.1f}</div>
-                <div class="metric-helper {cor}">{texto}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            if dados['pl']:
+                classe, texto = classificar_indicador(dados['pl'], "pl")
+                cor = classe
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">P/L (Preço/Lucro)</div>
+                    <div class="metric-value">{dados['pl']:.1f}</div>
+                    <div class="metric-helper {cor}">{texto}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div class="metric-card">
+                    <div class="metric-label">P/L (Preço/Lucro)</div>
+                    <div class="metric-value">N/D</div>
+                </div>
+                """, unsafe_allow_html=True)
         
         with col2:
-            classe, texto = classificar_indicador(dados['pvp'], "pvp")
-            cor = "good" if classe == "good" else ("bad" if classe == "bad" else "neutral")
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">P/VP (Preço/Valor Patrimonial)</div>
-                <div class="metric-value">{dados['pvp']:.2f}</div>
-                <div class="metric-helper {cor}">{texto}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            if dados['pvp']:
+                classe, texto = classificar_indicador(dados['pvp'], "pvp")
+                cor = classe
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">P/VP (Preço/Valor Patrimonial)</div>
+                    <div class="metric-value">{dados['pvp']:.2f}</div>
+                    <div class="metric-helper {cor}">{texto}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div class="metric-card">
+                    <div class="metric-label">P/VP</div>
+                    <div class="metric-value">N/D</div>
+                </div>
+                """, unsafe_allow_html=True)
         
         with col3:
-            if dados['cotacao'] and dados['vpa']:
-                p_ativo = dados['cotacao'] / dados['vpa'] if dados['vpa'] else None
+            if dados['vpa'] and dados['cotacao']:
+                p_ativo = dados['cotacao'] / dados['vpa']
                 st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-label">P/Ativo</div>
@@ -495,8 +517,11 @@ if analisar:
                 """, unsafe_allow_html=True)
         
         with col4:
-            if dados['ebitda'] and dados['cotacao']:
-                ev_ebitda = (dados['cotacao'] * dados.get('num_acoes', 0) + dados['divida_liquida']) / dados['ebitda'] if dados['ebitda'] else None
+            if dados['ebitda'] and dados['cotacao'] and dados['num_acoes']:
+                valor_mercado = dados['cotacao'] * dados['num_acoes']
+                divida_liquida = dados['divida_liquida'] if dados['divida_liquida'] else 0
+                ev = valor_mercado + divida_liquida
+                ev_ebitda = ev / dados['ebitda']
                 st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-label">EV/EBITDA</div>
@@ -520,20 +545,28 @@ if analisar:
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            classe, texto = classificar_indicador(dados['roe'], "roe")
-            cor = "good" if classe == "good" else ("bad" if classe == "bad" else "neutral")
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">ROE (Retorno s/ PL)</div>
-                <div class="metric-value">{dados['roe']:.1f}%</div>
-                <div class="metric-helper {cor}">{texto}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            if dados['roe']:
+                classe, texto = classificar_indicador(dados['roe'], "roe")
+                cor = classe
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">ROE (Retorno s/ PL)</div>
+                    <div class="metric-value">{dados['roe']:.1f}%</div>
+                    <div class="metric-helper {cor}">{texto}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div class="metric-card">
+                    <div class="metric-label">ROE</div>
+                    <div class="metric-value">N/D</div>
+                </div>
+                """, unsafe_allow_html=True)
         
         with col2:
             if dados['roic']:
                 classe, texto = classificar_indicador(dados['roic'], "roe")
-                cor = "good" if classe == "good" else ("bad" if classe == "bad" else "neutral")
+                cor = classe
                 st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-label">ROIC (Retorno s/ Capital)</div>
@@ -550,15 +583,23 @@ if analisar:
                 """, unsafe_allow_html=True)
         
         with col3:
-            classe, texto = classificar_indicador(dados['margem_liquida'], "margem_liquida")
-            cor = "good" if classe == "good" else ("bad" if classe == "bad" else "neutral")
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">Margem Líquida</div>
-                <div class="metric-value">{dados['margem_liquida']:.1f}%</div>
-                <div class="metric-helper {cor}">{texto}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            if dados['margem_liquida']:
+                classe, texto = classificar_indicador(dados['margem_liquida'], "margem_liquida")
+                cor = classe
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">Margem Líquida</div>
+                    <div class="metric-value">{dados['margem_liquida']:.1f}%</div>
+                    <div class="metric-helper {cor}">{texto}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div class="metric-card">
+                    <div class="metric-label">Margem Líquida</div>
+                    <div class="metric-value">N/D</div>
+                </div>
+                """, unsafe_allow_html=True)
         
         with col4:
             if dados['margem_ebitda']:
@@ -585,46 +626,78 @@ if analisar:
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            classe, texto = classificar_indicador(dados['dy'], "dy")
-            cor = "good" if classe == "good" else ("bad" if classe == "bad" else "neutral")
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">Dividend Yield</div>
-                <div class="metric-value">{dados['dy']:.2f}%</div>
-                <div class="metric-helper {cor}">{texto}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            if dados['dy']:
+                classe, texto = classificar_indicador(dados['dy'], "dy")
+                cor = classe
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">Dividend Yield</div>
+                    <div class="metric-value">{dados['dy']:.2f}%</div>
+                    <div class="metric-helper {cor}">{texto}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div class="metric-card">
+                    <div class="metric-label">Dividend Yield</div>
+                    <div class="metric-value">N/D</div>
+                </div>
+                """, unsafe_allow_html=True)
         
         with col2:
-            classe, texto = classificar_indicador(dados['divida_ebitda'], "divida_ebitda")
-            cor = "good" if classe == "good" else ("bad" if classe == "bad" else "neutral")
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">Dívida Líquida / EBITDA</div>
-                <div class="metric-value">{dados['divida_ebitda']:.1f}x</div>
-                <div class="metric-helper {cor}">{texto}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            if dados['divida_ebitda']:
+                classe, texto = classificar_indicador(dados['divida_ebitda'], "divida_ebitda")
+                cor = classe
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">Dívida Líquida / EBITDA</div>
+                    <div class="metric-value">{dados['divida_ebitda']:.1f}x</div>
+                    <div class="metric-helper {cor}">{texto}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div class="metric-card">
+                    <div class="metric-label">Dívida Líquida / EBITDA</div>
+                    <div class="metric-value">N/D</div>
+                </div>
+                """, unsafe_allow_html=True)
         
         with col3:
-            classe, texto = classificar_indicador(dados['liquidez_corrente'], "liquidez")
-            cor = "good" if classe == "good" else ("bad" if classe == "bad" else "neutral")
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">Liquidez Corrente</div>
-                <div class="metric-value">{dados['liquidez_corrente']:.2f}</div>
-                <div class="metric-helper {cor}">{texto}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            if dados['liquidez_corrente']:
+                classe, texto = classificar_indicador(dados['liquidez_corrente'], "liquidez")
+                cor = classe
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">Liquidez Corrente</div>
+                    <div class="metric-value">{dados['liquidez_corrente']:.2f}</div>
+                    <div class="metric-helper {cor}">{texto}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div class="metric-card">
+                    <div class="metric-label">Liquidez Corrente</div>
+                    <div class="metric-value">N/D</div>
+                </div>
+                """, unsafe_allow_html=True)
         
         with col4:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">Dívida Líquida</div>
-                <div class="metric-value">R$ {dados['divida_liquida']/1e9:.2f}B</div>
-                <div class="metric-helper">Dívida Bruta - Caixa</div>
-            </div>
-            """, unsafe_allow_html=True)
+            if dados['divida_liquida']:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">Dívida Líquida</div>
+                    <div class="metric-value">R$ {dados['divida_liquida']/1e9:.2f}B</div>
+                    <div class="metric-helper">Dívida Bruta - Caixa</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div class="metric-card">
+                    <div class="metric-label">Dívida Líquida</div>
+                    <div class="metric-value">N/D</div>
+                </div>
+                """, unsafe_allow_html=True)
         
         st.markdown("---")
         
@@ -637,7 +710,7 @@ if analisar:
         
         for ind, tipo in [('pl', 'pl'), ('pvp', 'pvp'), ('roe', 'roe'), ('dy', 'dy'), ('divida_ebitda', 'divida_ebitda')]:
             valor = dados.get(ind)
-            if valor:
+            if valor and not (isinstance(valor, float) and math.isnan(valor)):
                 total_indicadores += 1
                 classe, _ = classificar_indicador(valor, tipo)
                 if classe == 'good':
@@ -657,6 +730,8 @@ if analisar:
             else:
                 st.error(f"### ❌ QUALIDADE: FRACA ({score_percent:.0f}%)")
                 st.markdown("A maioria dos indicadores está abaixo do ideal. Empresa com riscos fundamentalistas.")
+        else:
+            st.info("Dados insuficientes para calcular a pontuação de qualidade.")
         
         # ==================== DISCLAIMER ====================
         st.markdown("---")
