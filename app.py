@@ -23,7 +23,7 @@ def criar_sessao_com_retry():
     # Estratégia de retry: espera 1s, 2s, 4s, 8s... até 5 tentativas
     retry_strategy = Retry(
         total=5,
-        backoff_factor=2,  # 1s, 2s, 4s, 8s, 16s
+        backoff_factor=2,
         status_forcelist=[429, 500, 502, 503, 504],
         allowed_methods=["GET"]
     )
@@ -32,20 +32,14 @@ def criar_sessao_com_retry():
     session.mount("http://", adapter)
     session.mount("https://", adapter)
     
-    # User-Agent realista para não ser bloqueado
     session.headers.update({
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     })
     
     return session
 
-# Cache em memória para não repetir buscas na mesma sessão
+# Cache em memória
 CACHE_TICKERS = {}
-
-def buscar_com_rate_limit(func, *args, **kwargs):
-    """Wrapper que adiciona delay entre chamadas para evitar rate limit"""
-    time.sleep(random.uniform(1.5, 3.5))  # Delay aleatório de 1.5 a 3.5 segundos
-    return func(*args, **kwargs)
 
 # ============================================================
 # CONFIGURAÇÃO DA PÁGINA
@@ -58,7 +52,7 @@ st.set_page_config(
 )
 
 # ============================================================
-# CSS PERSONALIZADO (mantido igual)
+# CSS PERSONALIZADO
 # ============================================================
 
 st.markdown("""
@@ -135,7 +129,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# FUNÇÃO PARA CRIAR O VELOCÍMETRO (mantida igual)
+# FUNÇÃO PARA CRIAR O VELOCÍMETRO
 # ============================================================
 
 def criar_velocimetro_simples(margem):
@@ -198,7 +192,7 @@ def criar_velocimetro_simples(margem):
     return fig
 
 # ============================================================
-# FUNÇÕES AUXILIARES (com melhorias)
+# FUNÇÕES AUXILIARES (VERSÃO CORRIGIDA)
 # ============================================================
 
 def traduzir_para_portugues(texto_ingles):
@@ -211,7 +205,7 @@ def traduzir_para_portugues(texto_ingles):
         return texto_ingles
 
 def buscar_resumo_status_invest(ticker):
-    """Versão melhorada com retry e tratamento de erro específico"""
+    """Versão CORRIGIDA com User-Agent e sem retry infinito"""
     ticker_clean = ticker.upper().replace('.SA', '')
     
     # Verifica cache primeiro
@@ -220,11 +214,15 @@ def buscar_resumo_status_invest(ticker):
         return CACHE_TICKERS[cache_key]
     
     try:
-        # Usa sessão com retry
-        session = criar_sessao_com_retry()
+        # Define um User-Agent de navegador real para não ser bloqueado
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
         url = f"https://statusinvest.com.br/acao/companyinfo?code={ticker_clean}"
         
-        response = session.get(url, timeout=15)
+        # Usa a sessão com retry e adiciona os headers
+        session = criar_sessao_com_retry()
+        response = session.get(url, headers=headers, timeout=15)
         
         if response.status_code == 200:
             dados = response.json()
@@ -233,12 +231,10 @@ def buscar_resumo_status_invest(ticker):
                 CACHE_TICKERS[cache_key] = resumo
                 return resumo
         elif response.status_code == 429:
-            # Rate limit específico do Status Invest
-            st.warning("⏳ Status Invest está com limite de requisições. Tentando novamente em alguns segundos...")
-            time.sleep(5)
-            return buscar_resumo_status_invest(ticker)  # Tenta recursivamente
-    except requests.exceptions.RequestException as e:
-        # Falha silenciosa, não quebra o app
+            # Se for bloqueado, não tenta de novo, apenas falha silenciosamente
+            st.warning(f"⚠️ Status Invest bloqueou a requisição para {ticker_clean}")
+    except Exception as e:
+        # Falha silenciosa: apenas não temos o resumo, mas o resto do app funciona
         pass
     
     CACHE_TICKERS[cache_key] = None
@@ -260,22 +256,18 @@ def calcular_upside(cotacao, valor_justo):
     return None
 
 def buscar_dados(ticker_input):
-    """Versão principal com cache, retry e delay"""
     ticker_input = ticker_input.strip().upper()
     
-    # Verifica cache primeiro
     if ticker_input in CACHE_TICKERS:
         return CACHE_TICKERS[ticker_input]
     
     ticker_yahoo = f"{ticker_input}.SA" if not ticker_input.endswith('.SA') else ticker_input
     
     try:
-        # Delay antes da chamada Yahoo Finance
         time.sleep(random.uniform(1.0, 2.5))
         
         stock = yf.Ticker(ticker_yahoo)
         
-        # Tentativa com retry manual para Yahoo Finance
         info = None
         for tentativa in range(3):
             try:
@@ -285,7 +277,7 @@ def buscar_dados(ticker_input):
             except Exception as e:
                 if "Rate limited" in str(e) or "429" in str(e):
                     wait_time = (tentativa + 1) * 2
-                    st.warning(f"⏳ Yahoo Finance com limite de requisições. Aguardando {wait_time}s...")
+                    st.warning(f"⏳ Aguardando {wait_time}s...")
                     time.sleep(wait_time)
                 else:
                     raise e
@@ -311,7 +303,6 @@ def buscar_dados(ticker_input):
         margem_seguranca = calcular_margem_seguranca(cotacao, valor_justo)
         upside = calcular_upside(cotacao, valor_justo)
         
-        # Busca resumo (já tem cache interno)
         resumo = buscar_resumo_status_invest(ticker_input)
         if not resumo:
             resumo_en = info.get('longBusinessSummary', '')
@@ -333,7 +324,6 @@ def buscar_dados(ticker_input):
             "segmento": info.get('industry', 'N/D')
         }
         
-        # Armazena em cache
         CACHE_TICKERS[ticker_input] = resultado
         return resultado
         
@@ -347,14 +337,13 @@ def buscar_dados(ticker_input):
         return None
 
 # ============================================================
-# INTERFACE PRINCIPAL (mantida igual)
+# INTERFACE PRINCIPAL
 # ============================================================
 
 st.title("📊 GRAHAM VALUATION SYSTEM")
 st.markdown("*Investment Banking Edition*")
 st.markdown("---")
 
-# Sidebar
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/000000/investment.png", width=80)
     st.markdown("## 🔍 Análise de Investimentos")
@@ -382,7 +371,7 @@ with st.sidebar:
     st.markdown("Fonte: Yahoo Finance + Status Invest")
 
 if limpar:
-    CACHE_TICKERS.clear()  # Limpa cache também
+    CACHE_TICKERS.clear()
     st.rerun()
 
 if analisar:
@@ -390,7 +379,6 @@ if analisar:
         dados = buscar_dados(ticker)
     
     if dados:
-        # ==================== CABEÇALHO ====================
         col1, col2, col3 = st.columns([2, 1, 1])
         
         with col1:
@@ -398,7 +386,6 @@ if analisar:
             st.markdown(f"### {dados['nome']}")
             st.caption(f"Setor: {dados['setor']} | Segmento: {dados['segmento']}")
         
-        # ==================== CARDS ====================
         st.markdown("---")
         
         col1, col2, col3 = st.columns(3)
@@ -456,7 +443,6 @@ if analisar:
                 </div>
                 """, unsafe_allow_html=True)
         
-        # ==================== VELOCÍMETRO ====================
         st.markdown("---")
         st.markdown("## 📊 ANÁLISE DE MARGEM DE SEGURANÇA")
         
@@ -466,7 +452,6 @@ if analisar:
         else:
             st.info("📊 Dados insuficientes para calcular a margem de segurança")
         
-        # ==================== RESULTADO ====================
         st.markdown("---")
         st.markdown("## 📈 RESULTADO DA VALUATION")
         
@@ -498,12 +483,10 @@ if analisar:
         else:
             st.warning("⚠️ Dados insuficientes para calcular o valor justo")
         
-        # ==================== SOBRE A EMPRESA ====================
         st.markdown("---")
         st.markdown("## 🏢 SOBRE A EMPRESA")
         st.info(dados['resumo'])
         
-        # ==================== INDICADORES ====================
         st.markdown("---")
         st.markdown("## 📊 INDICADORES FUNDAMENTALISTAS")
         
@@ -534,7 +517,6 @@ if analisar:
             else:
                 st.metric("P/VP (Preço/Valor)", "N/D")
         
-        # ==================== DISCLAIMER ====================
         st.markdown("---")
         st.caption("""
         ⚠️ **DISCLAIMER:** Este relatório é gerado automaticamente com base em dados públicos. 
@@ -542,7 +524,6 @@ if analisar:
         por suas decisões de alocação. Rentabilidade passada não representa garantia de retornos futuros.
         """)
         
-        # ==================== DOWNLOAD ====================
         st.markdown("---")
         
         df = pd.DataFrame({
@@ -572,7 +553,6 @@ if analisar:
         st.error(f"❌ Não foi possível encontrar dados para {ticker}")
         st.info("Verifique se o ticker está correto (ex: ITSA4, PETR4, VALE3)")
 
-# ==================== RODAPÉ ====================
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: #8A8D91; font-size: 12px;'>"
