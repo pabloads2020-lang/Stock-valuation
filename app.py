@@ -8,7 +8,6 @@ from deep_translator import GoogleTranslator
 import requests
 import time
 import random
-from functools import lru_cache
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -17,36 +16,25 @@ from urllib3.util.retry import Retry
 # ============================================================
 
 def criar_sessao_com_retry():
-    """Cria uma sessão requests com retry automático e backoff exponencial"""
     session = requests.Session()
-    
-    # Estratégia de retry: espera 1s, 2s, 4s, 8s... até 5 tentativas
     retry_strategy = Retry(
         total=5,
         backoff_factor=2,
         status_forcelist=[429, 500, 502, 503, 504],
         allowed_methods=["GET"]
     )
-    
     adapter = HTTPAdapter(max_retries=retry_strategy)
     session.mount("http://", adapter)
     session.mount("https://", adapter)
-    
     session.headers.update({
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     })
-    
     return session
 
-# Cache em memória
 CACHE_TICKERS = {}
 
-# ============================================================
-# CONFIGURAÇÃO DA PÁGINA
-# ============================================================
-
 st.set_page_config(
-    page_title="Graham Valuation - Método de Graham para Ações",
+    page_title="Multi-Valuation - Graham, Bazin & Gordon",
     page_icon="📊",
     layout="wide"
 )
@@ -57,68 +45,53 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    .main {
-        background-color: #F5F6F8;
-    }
-    .stApp {
-        background-color: #F5F6F8;
-    }
+    .main { background-color: #F5F6F8; }
+    .stApp { background-color: #F5F6F8; }
     .metric-card {
         background-color: white;
         border-radius: 10px;
-        padding: 20px;
+        padding: 15px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         text-align: center;
         border: 1px solid #E8E9EC;
+        height: 100%;
     }
     .metric-label {
         color: #4A5568;
-        font-size: 12px;
+        font-size: 11px;
         letter-spacing: 1px;
-        margin-bottom: 10px;
+        margin-bottom: 5px;
     }
     .metric-value {
         color: #0B1C3F;
-        font-size: 28px;
+        font-size: 22px;
         font-weight: bold;
     }
-    .valor-justo-card {
-        background-color: #0B1C3F;
-        border-radius: 10px;
-        padding: 20px;
+    .model-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #0B1C3F;
+        margin-bottom: 10px;
         text-align: center;
-        color: white;
-    }
-    .valor-justo-value {
-        color: #C9A03D;
-        font-size: 32px;
-        font-weight: bold;
     }
     .recomendacao {
         text-align: center;
-        padding: 15px;
-        border-radius: 10px;
-        margin: 10px 0;
+        padding: 8px;
+        border-radius: 8px;
+        margin-top: 10px;
+        font-weight: bold;
+        font-size: 14px;
     }
-    .recomendacao-COMPRAR {
-        background-color: #2E7D32;
-        color: white;
+    .recomendacao-COMPRAR { background-color: #2E7D32; color: white; }
+    .recomendacao-COMPRA-PARCIAL { background-color: #C9A03D; color: white; }
+    .recomendacao-NEUTRO { background-color: #4A5568; color: white; }
+    .recomendacao-EVITAR { background-color: #C62828; color: white; }
+    .card-container {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 30px;
     }
-    .recomendacao-COMPRA-PARCIAL {
-        background-color: #C9A03D;
-        color: white;
-    }
-    .recomendacao-NEUTRO {
-        background-color: #4A5568;
-        color: white;
-    }
-    .recomendacao-EVITAR {
-        background-color: #C62828;
-        color: white;
-    }
-    h1, h2, h3 {
-        color: #0B1C3F;
-    }
+    h1, h2, h3 { color: #0B1C3F; }
     hr {
         margin: 20px 0;
         border: none;
@@ -129,71 +102,133 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# FUNÇÃO PARA CRIAR O VELOCÍMETRO
+# FUNÇÕES DE VALUATION
 # ============================================================
 
-def criar_velocimetro_simples(margem):
+def calcular_graham(lpa, vpa):
+    """Método Benjamin Graham: √(22,5 × LPA × VPA)"""
+    if lpa and vpa and lpa > 0 and vpa > 0:
+        return math.sqrt(22.5 * lpa * vpa)
+    return None
+
+def calcular_bazin(dividendos_anuais):
+    """Método Bazin: (Dividendo anual × 100) / 6"""
+    if dividendos_anuais and dividendos_anuais > 0:
+        return (dividendos_anuais * 100) / 6
+    return None
+
+def calcular_gordon(dividendos_anuais, taxa_crescimento=0.04, taxa_desconto=0.10):
+    """Método Gordon: D0 × (1+g) / (k - g)"""
+    if dividendos_anuais and dividendos_anuais > 0:
+        return (dividendos_anuais * (1 + taxa_crescimento)) / (taxa_desconto - taxa_crescimento)
+    return None
+
+def calcular_margem_seguranca(cotacao, valor_justo):
+    if cotacao and valor_justo and cotacao > 0 and valor_justo:
+        return ((valor_justo - cotacao) / valor_justo) * 100
+    return None
+
+def calcular_recomendacao(margem):
+    if margem is None:
+        return "NEUTRO", "⚠️ Dados Insuficientes"
+    if margem >= 30:
+        return "COMPRAR", "Ótima oportunidade!"
+    elif margem >= 15:
+        return "COMPRA PARCIAL", "Boa oportunidade"
+    elif margem >= 0:
+        return "NEUTRO", "Preço justo"
+    else:
+        return "EVITAR", "Ação cara"
+
+# ============================================================
+# VELOCÍMETRO GENÉRICO
+# ============================================================
+
+def criar_velocimetro(margem, titulo, cor_verde="#2E7D32", cor_amarela="#C9A03D", cor_vermelha="#C62828"):
     if margem is None:
         margem = 0
     
     if margem < 0:
-        cor_marcador = "#C62828"
+        cor_marcador = cor_vermelha
     elif margem < 20:
-        cor_marcador = "#F5A623"
+        cor_marcador = cor_amarela
     else:
-        cor_marcador = "#2E7D32"
+        cor_marcador = cor_verde
     
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=margem,
         number={
             'suffix': "%", 
-            'font': {'size': 48, 'color': "black", 'family': "Arial", 'weight': "bold"},
+            'font': {'size': 36, 'color': "black", 'family': "Arial", 'weight': "bold"},
             'valueformat': '.1f'
         },
         title={
-            'text': "MARGEM DE SEGURANÇA", 
-            'font': {'size': 14, 'color': "gray", 'family': "Arial"}
+            'text': titulo, 
+            'font': {'size': 11, 'color': "gray", 'family': "Arial"}
         },
         gauge={
             'axis': {
                 'range': [-100, 100],
-                'tickwidth': 2,
+                'tickwidth': 1,
                 'tickcolor': "black",
-                'ticklen': 10,
-                'tickfont': {'size': 11, 'color': "black", 'family': "Arial"},
+                'ticklen': 8,
+                'tickfont': {'size': 9, 'color': "black"},
                 'ticks': 'outside',
-                'tickvals': [-100, -75, -50, -25, 0, 25, 50, 75, 100],
-                'ticktext': ['-100', '', '-50', '', '0', '', '50', '', '100']
+                'tickvals': [-100, -50, 0, 50, 100],
+                'ticktext': ['-100', '-50', '0', '50', '100']
             },
-            'bar': {'color': "black", 'thickness': 0.03, 'line': {'color': "black", 'width': 1}},
+            'bar': {'color': "black", 'thickness': 0.03},
             'bgcolor': "white",
             'borderwidth': 0,
             'steps': [
-                {'range': [-100, 0], 'color': "#E53935", 'thickness': 0.6},
-                {'range': [0, 20], 'color': "#FDD835", 'thickness': 0.6},
-                {'range': [20, 100], 'color': "#43A047", 'thickness': 0.6}
+                {'range': [-100, 0], 'color': cor_vermelha, 'thickness': 0.5},
+                {'range': [0, 20], 'color': cor_amarela, 'thickness': 0.5},
+                {'range': [20, 100], 'color': cor_verde, 'thickness': 0.5}
             ],
             'threshold': {
-                'line': {'color': cor_marcador, 'width': 4},
-                'thickness': 0.8,
+                'line': {'color': cor_marcador, 'width': 3},
+                'thickness': 0.6,
                 'value': margem
             }
         }
     ))
     
     fig.update_layout(
-        height=300,
-        margin=dict(l=40, r=40, t=70, b=30),
-        paper_bgcolor="white",
-        font=dict(color="black", family="Arial")
+        height=220,
+        margin=dict(l=30, r=30, t=50, b=20),
+        paper_bgcolor="white"
     )
     
     return fig
 
 # ============================================================
-# FUNÇÕES AUXILIARES (VERSÃO CORRIGIDA)
+# BUSCA DE DADOS (otimizada)
 # ============================================================
+
+def buscar_resumo_status_invest(ticker):
+    ticker_clean = ticker.upper().replace('.SA', '')
+    cache_key = f"resumo_{ticker_clean}"
+    if cache_key in CACHE_TICKERS:
+        return CACHE_TICKERS[cache_key]
+    
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        url = f"https://statusinvest.com.br/acao/companyinfo?code={ticker_clean}"
+        session = criar_sessao_com_retry()
+        response = session.get(url, headers=headers, timeout=15)
+        
+        if response.status_code == 200:
+            dados = response.json()
+            resumo = dados.get('description') or dados.get('businessDescription')
+            if resumo and len(resumo) > 50:
+                CACHE_TICKERS[cache_key] = resumo
+                return resumo
+    except:
+        pass
+    
+    CACHE_TICKERS[cache_key] = None
+    return None
 
 def traduzir_para_portugues(texto_ingles):
     if not texto_ingles:
@@ -204,57 +239,6 @@ def traduzir_para_portugues(texto_ingles):
     except:
         return texto_ingles
 
-def buscar_resumo_status_invest(ticker):
-    """Versão CORRIGIDA com User-Agent e sem retry infinito"""
-    ticker_clean = ticker.upper().replace('.SA', '')
-    
-    # Verifica cache primeiro
-    cache_key = f"resumo_{ticker_clean}"
-    if cache_key in CACHE_TICKERS:
-        return CACHE_TICKERS[cache_key]
-    
-    try:
-        # Define um User-Agent de navegador real para não ser bloqueado
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
-        url = f"https://statusinvest.com.br/acao/companyinfo?code={ticker_clean}"
-        
-        # Usa a sessão com retry e adiciona os headers
-        session = criar_sessao_com_retry()
-        response = session.get(url, headers=headers, timeout=15)
-        
-        if response.status_code == 200:
-            dados = response.json()
-            resumo = dados.get('description') or dados.get('businessDescription')
-            if resumo and len(resumo) > 50:
-                CACHE_TICKERS[cache_key] = resumo
-                return resumo
-        elif response.status_code == 429:
-            # Se for bloqueado, não tenta de novo, apenas falha silenciosamente
-            st.warning(f"⚠️ Status Invest bloqueou a requisição para {ticker_clean}")
-    except Exception as e:
-        # Falha silenciosa: apenas não temos o resumo, mas o resto do app funciona
-        pass
-    
-    CACHE_TICKERS[cache_key] = None
-    return None
-
-def calcular_graham(lpa, vpa):
-    if lpa and vpa and lpa > 0 and vpa > 0:
-        return math.sqrt(22.5 * lpa * vpa)
-    return None
-
-def calcular_margem_seguranca(cotacao, valor_justo):
-    if cotacao and valor_justo and cotacao > 0 and valor_justo:
-        return ((valor_justo - cotacao) / valor_justo) * 100
-    return None
-
-def calcular_upside(cotacao, valor_justo):
-    if cotacao and valor_justo and cotacao > 0 and valor_justo:
-        return ((valor_justo - cotacao) / cotacao) * 100
-    return None
-
 def buscar_dados(ticker_input):
     ticker_input = ticker_input.strip().upper()
     
@@ -264,26 +248,12 @@ def buscar_dados(ticker_input):
     ticker_yahoo = f"{ticker_input}.SA" if not ticker_input.endswith('.SA') else ticker_input
     
     try:
-        time.sleep(random.uniform(1.0, 2.5))
+        time.sleep(random.uniform(1.0, 2.0))
         
         stock = yf.Ticker(ticker_yahoo)
-        
-        info = None
-        for tentativa in range(3):
-            try:
-                info = stock.info
-                if info:
-                    break
-            except Exception as e:
-                if "Rate limited" in str(e) or "429" in str(e):
-                    wait_time = (tentativa + 1) * 2
-                    st.warning(f"⏳ Aguardando {wait_time}s...")
-                    time.sleep(wait_time)
-                else:
-                    raise e
+        info = stock.info
         
         if not info:
-            CACHE_TICKERS[ticker_input] = None
             return None
         
         cotacao = info.get('currentPrice') or info.get('regularMarketPrice')
@@ -293,16 +263,27 @@ def buscar_dados(ticker_input):
         roe = info.get('returnOnEquity')
         nome = info.get('longName') or ticker_input
         
+        # Dividendos (para Bazin e Gordon)
+        dividendos = info.get('dividendRate', 0)
+        if not dividendos or dividendos == 0:
+            dividendos = info.get('totalCashPerShare', 0)
+        
         if roe:
             roe = roe * 100
         
         if not lpa and pl and cotacao:
             lpa = cotacao / pl if pl > 0 else None
         
-        valor_justo = calcular_graham(lpa, vpa)
-        margem_seguranca = calcular_margem_seguranca(cotacao, valor_justo)
-        upside = calcular_upside(cotacao, valor_justo)
+        # Cálculo dos 3 modelos
+        valor_justo_graham = calcular_graham(lpa, vpa)
+        valor_justo_bazin = calcular_bazin(dividendos)
+        valor_justo_gordon = calcular_gordon(dividendos)
         
+        margem_graham = calcular_margem_seguranca(cotacao, valor_justo_graham)
+        margem_bazin = calcular_margem_seguranca(cotacao, valor_justo_bazin)
+        margem_gordon = calcular_margem_seguranca(cotacao, valor_justo_gordon)
+        
+        # Resumo
         resumo = buscar_resumo_status_invest(ticker_input)
         if not resumo:
             resumo_en = info.get('longBusinessSummary', '')
@@ -316,9 +297,13 @@ def buscar_dados(ticker_input):
             "vpa": vpa,
             "pl": pl,
             "roe": roe,
-            "valor_justo": valor_justo,
-            "margem_seguranca": margem_seguranca,
-            "upside": upside,
+            "dividendos": dividendos,
+            "valor_justo_graham": valor_justo_graham,
+            "valor_justo_bazin": valor_justo_bazin,
+            "valor_justo_gordon": valor_justo_gordon,
+            "margem_graham": margem_graham,
+            "margem_bazin": margem_bazin,
+            "margem_gordon": margem_gordon,
             "resumo": resumo,
             "setor": info.get('sector', 'N/D'),
             "segmento": info.get('industry', 'N/D')
@@ -328,26 +313,21 @@ def buscar_dados(ticker_input):
         return resultado
         
     except Exception as e:
-        error_msg = str(e)
-        if "Rate limited" in error_msg or "429" in error_msg:
-            st.error("⏳ Limite de requisições atingido. Aguarde 30 segundos e tente novamente.")
-        else:
-            st.error(f"Erro ao buscar dados: {error_msg}")
-        CACHE_TICKERS[ticker_input] = None
+        st.error(f"Erro ao buscar dados: {str(e)}")
         return None
 
 # ============================================================
 # INTERFACE PRINCIPAL
 # ============================================================
 
-st.title("📊 GRAHAM VALUATION SYSTEM")
-st.markdown("*Investment Banking Edition*")
+st.title("📊 MULTI-VALUATION SYSTEM")
+st.markdown("*Graham • Bazin • Gordon*")
 st.markdown("---")
 
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/000000/investment.png", width=80)
     st.markdown("## 🔍 Análise de Investimentos")
-    st.markdown("### Método Benjamin Graham")
+    st.markdown("### 3 Modelos de Valuation")
     st.markdown("---")
     
     ticker = st.text_input("📈 Ticker da Ação", value="ITSA4", help="Ex: ITSA4, PETR4, VALE3")
@@ -359,16 +339,20 @@ with st.sidebar:
         limpar = st.button("🗑️ LIMPAR", use_container_width=True)
     
     st.markdown("---")
+    st.markdown("### 📋 Sobre os Modelos")
+    st.markdown("**Graham:** √(22,5 × LPA × VPA)")
+    st.markdown("**Bazin:** (Dividendo × 100) / 6")
+    st.markdown("**Gordon:** D0 × (1+g) / (k-g)")
+    st.markdown("---")
     st.markdown("### 📋 Exemplos")
     st.markdown("- ITSA4 (Itaúsa)")
     st.markdown("- PETR4 (Petrobras)")
     st.markdown("- VALE3 (Vale)")
-    st.markdown("- WEGE3 (WEG)")
-    st.markdown("- BOVA11 (ETF)")
+    st.markdown("- BBAS3 (Banco do Brasil)")
     st.markdown("---")
     st.markdown("### ℹ️ Sobre")
-    st.markdown("Valuation baseada no método de Graham")
-    st.markdown("Fonte: Yahoo Finance + Status Invest")
+    st.markdown("Valuation baseada em 3 metodologias")
+    st.markdown("Fonte: Yahoo Finance")
 
 if limpar:
     CACHE_TICKERS.clear()
@@ -379,114 +363,112 @@ if analisar:
         dados = buscar_dados(ticker)
     
     if dados:
-        col1, col2, col3 = st.columns([2, 1, 1])
+        # Cabeçalho
+        st.markdown(f"## {dados['ticker']} - {dados['nome']}")
+        st.caption(f"Setor: {dados['setor']} | Segmento: {dados['segmento']} | Cotação atual: R$ {dados['cotacao']:.2f}")
+        st.markdown("---")
         
+        # ==================== CARDS DOS 3 MODELOS ====================
+        col1, col2, col3 = st.columns(3)
+        
+        # Card Graham
         with col1:
-            st.markdown(f"## {dados['ticker']}")
-            st.markdown(f"### {dados['nome']}")
-            st.caption(f"Setor: {dados['setor']} | Segmento: {dados['segmento']}")
+            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+            st.markdown('<div class="model-title">📘 BENJAMIN GRAHAM</div>', unsafe_allow_html=True)
+            if dados['valor_justo_graham']:
+                st.markdown(f'<div class="metric-value">R$ {dados["valor_justo_graham"]:.2f}</div>', unsafe_allow_html=True)
+                recomendacao, _ = calcular_recomendacao(dados['margem_graham'])
+                cor_classe = f"recomendacao-{recomendacao}"
+                st.markdown(f'<div class="recomendacao {cor_classe}">{recomendacao}</div>', unsafe_allow_html=True)
+                st.caption(f"Margem: {dados['margem_graham']:+.1f}%")
+            else:
+                st.markdown('<div class="metric-value">Dados insuficientes</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Card Bazin
+        with col2:
+            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+            st.markdown('<div class="model-title">💰 BAZIN (6%)</div>', unsafe_allow_html=True)
+            if dados['valor_justo_bazin']:
+                st.markdown(f'<div class="metric-value">R$ {dados["valor_justo_bazin"]:.2f}</div>', unsafe_allow_html=True)
+                recomendacao, _ = calcular_recomendacao(dados['margem_bazin'])
+                cor_classe = f"recomendacao-{recomendacao}"
+                st.markdown(f'<div class="recomendacao {cor_classe}">{recomendacao}</div>', unsafe_allow_html=True)
+                st.caption(f"Dividendo anual: R$ {dados['dividendos']:.2f}" if dados['dividendos'] else "Sem dividendos")
+            else:
+                st.markdown('<div class="metric-value">Dados insuficientes</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Card Gordon
+        with col3:
+            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+            st.markdown('<div class="model-title">📈 GORDON (GGM)</div>', unsafe_allow_html=True)
+            if dados['valor_justo_gordon']:
+                st.markdown(f'<div class="metric-value">R$ {dados["valor_justo_gordon"]:.2f}</div>', unsafe_allow_html=True)
+                recomendacao, _ = calcular_recomendacao(dados['margem_gordon'])
+                cor_classe = f"recomendacao-{recomendacao}"
+                st.markdown(f'<div class="recomendacao {cor_classe}">{recomendacao}</div>', unsafe_allow_html=True)
+                st.caption("Crescimento: 4% | Retorno: 10%")
+            else:
+                st.markdown('<div class="metric-value">Dados insuficientes</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown("---")
+        
+        # ==================== VELOCÍMETROS ====================
+        st.markdown("## 📊 MARGEM DE SEGURANÇA")
         
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">COTAÇÃO ATUAL</div>
-                <div class="metric-value">R$ {dados['cotacao']:.2f}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            fig_graham = criar_velocimetro(dados['margem_graham'], "GRAHAM")
+            st.plotly_chart(fig_graham, use_container_width=True)
         
         with col2:
-            if dados['valor_justo']:
-                cor_upside = "#2E7D32" if dados['upside'] >= 0 else "#C62828"
-                st.markdown(f"""
-                <div class="valor-justo-card">
-                    <div class="metric-label">VALOR JUSTO (GRAHAM)</div>
-                    <div class="valor-justo-value">R$ {dados['valor_justo']:.2f}</div>
-                    <div style="color: {cor_upside}; font-size: 14px; margin-top: 8px;">
-                        {dados['upside']:+.1f}% {'▲' if dados['upside'] >= 0 else '▼'}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-label">VALOR JUSTO</div>
-                    <div class="metric-value">N/D</div>
-                </div>
-                """, unsafe_allow_html=True)
+            fig_bazin = criar_velocimetro(dados['margem_bazin'], "BAZIN")
+            st.plotly_chart(fig_bazin, use_container_width=True)
         
         with col3:
-            if dados['margem_seguranca']:
-                if dados['margem_seguranca'] >= 30:
-                    cor_margem = "#2E7D32"
-                elif dados['margem_seguranca'] >= 15:
-                    cor_margem = "#C9A03D"
-                elif dados['margem_seguranca'] >= 0:
-                    cor_margem = "#4A5568"
-                else:
-                    cor_margem = "#C62828"
-                
-                st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-label">MARGEM DE SEGURANÇA</div>
-                    <div class="metric-value" style="color: {cor_margem};">{dados['margem_seguranca']:+.1f}%</div>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-label">MARGEM DE SEGURANÇA</div>
-                    <div class="metric-value">N/D</div>
-                </div>
-                """, unsafe_allow_html=True)
+            fig_gordon = criar_velocimetro(dados['margem_gordon'], "GORDON")
+            st.plotly_chart(fig_gordon, use_container_width=True)
         
         st.markdown("---")
-        st.markdown("## 📊 ANÁLISE DE MARGEM DE SEGURANÇA")
         
-        if dados['margem_seguranca']:
-            fig = criar_velocimetro_simples(dados['margem_seguranca'])
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("📊 Dados insuficientes para calcular a margem de segurança")
+        # ==================== MÉDIA E RECOMENDAÇÃO FINAL ====================
+        st.markdown("## 🎯 SÍNTESE DA ANÁLISE")
         
-        st.markdown("---")
-        st.markdown("## 📈 RESULTADO DA VALUATION")
+        # Calcula média dos valores justos (ignorando None)
+        valores_validos = []
+        if dados['valor_justo_graham']:
+            valores_validos.append(dados['valor_justo_graham'])
+        if dados['valor_justo_bazin']:
+            valores_validos.append(dados['valor_justo_bazin'])
+        if dados['valor_justo_gordon']:
+            valores_validos.append(dados['valor_justo_gordon'])
         
-        if dados['margem_seguranca']:
-            if dados['margem_seguranca'] >= 30:
-                recomendacao = "COMPRAR"
-                classe = "recomendacao-COMPRAR"
-            elif dados['margem_seguranca'] >= 15:
-                recomendacao = "COMPRA PARCIAL"
-                classe = "recomendacao-COMPRA-PARCIAL"
-            elif dados['margem_seguranca'] >= 0:
-                recomendacao = "NEUTRO"
-                classe = "recomendacao-NEUTRO"
-            else:
-                recomendacao = "EVITAR"
-                classe = "recomendacao-EVITAR"
+        if valores_validos:
+            media_valor_justo = sum(valores_validos) / len(valores_validos)
+            margem_media = ((media_valor_justo - dados['cotacao']) / media_valor_justo) * 100
+            recomendacao_final, mensagem = calcular_recomendacao(margem_media)
             
-            st.markdown(f"""
-            <div class="recomendacao {classe}">
-                <h2 style="margin:0; color:white;">{recomendacao}</h2>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown(f"""
-            > **Margem de Segurança:** {dados['margem_seguranca']:.1f}%  
-            > **Valor Justo:** R$ {dados['valor_justo']:.2f} | **Cotação:** R$ {dados['cotacao']:.2f}  
-            > **Upside Potencial:** {dados['upside']:+.1f}%
-            """)
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                st.metric("📊 Média dos 3 Modelos", f"R$ {media_valor_justo:.2f}")
+                st.metric("📈 Upside médio", f"{(media_valor_justo/dados['cotacao'] - 1)*100:+.1f}%")
+            with col2:
+                cor_classe = f"recomendacao-{recomendacao_final}"
+                st.markdown(f'<div class="recomendacao {cor_classe}" style="padding:20px;">'
+                           f'<h2 style="margin:0;">{recomendacao_final}</h2>'
+                           f'<p style="margin:5px 0 0 0;">{mensagem}</p></div>', unsafe_allow_html=True)
         else:
-            st.warning("⚠️ Dados insuficientes para calcular o valor justo")
+            st.warning("⚠️ Dados insuficientes para calcular a média dos modelos")
         
+        # ==================== SOBRE A EMPRESA ====================
         st.markdown("---")
         st.markdown("## 🏢 SOBRE A EMPRESA")
         st.info(dados['resumo'])
         
+        # ==================== INDICADORES ====================
         st.markdown("---")
         st.markdown("## 📊 INDICADORES FUNDAMENTALISTAS")
         
@@ -499,13 +481,13 @@ if analisar:
         with col2:
             if dados['pl']:
                 cor_pl = "🟢" if dados['pl'] < 15 else "🔴"
-                st.metric("P/L (Preço/Lucro)", f"{cor_pl} {dados['pl']:.1f}" if dados['pl'] else "N/D")
+                st.metric("P/L (Preço/Lucro)", f"{cor_pl} {dados['pl']:.1f}")
             else:
                 st.metric("P/L (Preço/Lucro)", "N/D")
             
             if dados['roe']:
                 cor_roe = "🟢" if dados['roe'] > 15 else "🟡"
-                st.metric("ROE (Retorno s/ PL)", f"{cor_roe} {dados['roe']:.1f}%" if dados['roe'] else "N/D")
+                st.metric("ROE (Retorno s/ PL)", f"{cor_roe} {dados['roe']:.1f}%")
             else:
                 st.metric("ROE (Retorno s/ PL)", "N/D")
         
@@ -516,27 +498,38 @@ if analisar:
                 st.metric("P/VP (Preço/Valor)", f"{cor_pvp} {pvp:.2f}")
             else:
                 st.metric("P/VP (Preço/Valor)", "N/D")
+            
+            if dados['dividendos'] and dados['dividendos'] > 0:
+                dy = (dados['dividendos'] / dados['cotacao']) * 100
+                st.metric("Dividend Yield", f"{dy:.2f}%")
+            else:
+                st.metric("Dividend Yield", "N/D")
         
+        # ==================== DISCLAIMER ====================
         st.markdown("---")
         st.caption("""
         ⚠️ **DISCLAIMER:** Este relatório é gerado automaticamente com base em dados públicos. 
+        Os modelos de valuation (Graham, Bazin e Gordon) são ferramentas auxiliares de análise.
         Não constitui recomendação de investimento personalizada. O investidor é o único responsável 
         por suas decisões de alocação. Rentabilidade passada não representa garantia de retornos futuros.
         """)
         
+        # ==================== DOWNLOAD ====================
         st.markdown("---")
         
         df = pd.DataFrame({
-            "Indicador": ["Cotação", "Valor Justo", "Margem de Segurança", "Upside", "LPA", "VPA", "P/L", "ROE"],
-            "Valor": [
-                f"R$ {dados['cotacao']:.2f}" if dados['cotacao'] else "N/D",
-                f"R$ {dados['valor_justo']:.2f}" if dados['valor_justo'] else "N/D",
-                f"{dados['margem_seguranca']:.1f}%" if dados['margem_seguranca'] else "N/D",
-                f"{dados['upside']:.1f}%" if dados['upside'] else "N/D",
-                f"R$ {dados['lpa']:.2f}" if dados['lpa'] else "N/D",
-                f"R$ {dados['vpa']:.2f}" if dados['vpa'] else "N/D",
-                f"{dados['pl']:.1f}" if dados['pl'] else "N/D",
-                f"{dados['roe']:.1f}%" if dados['roe'] else "N/D",
+            "Modelo": ["Graham", "Bazin", "Gordon", "Média"],
+            "Valor Justo (R$)": [
+                f"{dados['valor_justo_graham']:.2f}" if dados['valor_justo_graham'] else "N/D",
+                f"{dados['valor_justo_bazin']:.2f}" if dados['valor_justo_bazin'] else "N/D",
+                f"{dados['valor_justo_gordon']:.2f}" if dados['valor_justo_gordon'] else "N/D",
+                f"{media_valor_justo:.2f}" if valores_validos else "N/D"
+            ],
+            "Margem (%)": [
+                f"{dados['margem_graham']:.1f}" if dados['margem_graham'] else "N/D",
+                f"{dados['margem_bazin']:.1f}" if dados['margem_bazin'] else "N/D",
+                f"{dados['margem_gordon']:.1f}" if dados['margem_gordon'] else "N/D",
+                f"{margem_media:.1f}" if valores_validos else "N/D"
             ]
         })
         
@@ -544,7 +537,7 @@ if analisar:
         st.download_button(
             label="📥 Exportar para CSV",
             data=csv,
-            file_name=f"valuation_{dados['ticker']}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            file_name=f"multi_valuation_{dados['ticker']}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
             mime="text/csv",
             use_container_width=True
         )
@@ -556,7 +549,7 @@ if analisar:
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: #8A8D91; font-size: 12px;'>"
-    "© Graham Valuation System • Investment Banking Edition • Método Benjamin Graham"
+    "© Multi-Valuation System • Graham • Bazin • Gordon • Métodos de Benjamin Graham"
     "</div>",
     unsafe_allow_html=True
 )
