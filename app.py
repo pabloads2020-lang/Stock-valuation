@@ -34,7 +34,7 @@ def criar_sessao_com_retry():
 CACHE_TICKERS = {}
 
 st.set_page_config(
-    page_title="Multi-Valuation - Graham, Bazin & Gordon",
+    page_title="Multi-Valuation - Graham, Bazin, Gordon & DCF",
     page_icon="📊",
     layout="wide"
 )
@@ -98,6 +98,13 @@ st.markdown("""
         height: 1px;
         background: linear-gradient(90deg, transparent, #C9A03D, transparent);
     }
+    .param-card {
+        background-color: white;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        margin-bottom: 15px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -122,6 +129,50 @@ def calcular_gordon(dividendos_anuais, taxa_crescimento=0.04, taxa_desconto=0.10
     if dividendos_anuais and dividendos_anuais > 0:
         return (dividendos_anuais * (1 + taxa_crescimento)) / (taxa_desconto - taxa_crescimento)
     return None
+
+def calcular_dcf(ebit, capex, depreciacao, divida_liquida, num_acoes, 
+                 taxa_ir=0.34, crescimento_inicial=0.10, crescimento_terminal=0.06,
+                 wacc=0.11, crescimento_perpetuo=0.03, anos=5):
+    """
+    Método DCF (Fluxo de Caixa Descontado)
+    Valor da Empresa = Σ FCFt/(1+WACC)^t + Valor Residual
+    """
+    if not ebit or ebit <= 0:
+        return None
+    
+    # Fluxo de caixa livre atual
+    fcf_atual = ebit * (1 - taxa_ir) + depreciacao - capex
+    
+    if fcf_atual <= 0:
+        return None
+    
+    # 1. Projetar fluxos de caixa
+    fluxos_presentes = []
+    for ano in range(1, anos + 1):
+        if ano <= 3:
+            taxa = crescimento_inicial
+        else:
+            taxa = crescimento_terminal
+        
+        fcf_ano = fcf_atual * (1 + taxa) ** ano
+        fcf_presente = fcf_ano / ((1 + wacc) ** ano)
+        fluxos_presentes.append(fcf_presente)
+    
+    # 2. Valor presente dos fluxos
+    valor_presente_fluxos = sum(fluxos_presentes)
+    
+    # 3. Valor residual (perpetuidade)
+    fcf_ultimo = fcf_atual * (1 + crescimento_terminal) ** anos
+    valor_residual = fcf_ultimo * (1 + crescimento_perpetuo) / (wacc - crescimento_perpetuo)
+    valor_presente_residual = valor_residual / ((1 + wacc) ** anos)
+    
+    # 4. Valor da empresa
+    valor_empresa = valor_presente_fluxos + valor_presente_residual
+    
+    # 5. Valor da ação
+    valor_acao = (valor_empresa - divida_liquida) / num_acoes
+    
+    return valor_acao
 
 def calcular_margem_seguranca(cotacao, valor_justo):
     if cotacao and valor_justo and cotacao > 0 and valor_justo:
@@ -263,6 +314,18 @@ def buscar_dados(ticker_input):
         roe = info.get('returnOnEquity')
         nome = info.get('longName') or ticker_input
         
+        # Dados para DCF
+        ebit = info.get('ebitda') or info.get('operatingIncome')
+        capex = info.get('capitalExpenditures') or info.get('capitalExpenditure', 0)
+        depreciacao = info.get('depreciation', ebit * 0.1 if ebit else 0)
+        divida_bruta = info.get('totalDebt', 0)
+        caixa = info.get('totalCash', 0)
+        divida_liquida = divida_bruta - caixa
+        num_acoes = info.get('sharesOutstanding', 0)
+        
+        if capex == 0:
+            capex = ebit * 0.15 if ebit else 0
+        
         # Dividendos (para Bazin e Gordon)
         dividendos = info.get('dividendRate', 0)
         if not dividendos or dividendos == 0:
@@ -274,10 +337,13 @@ def buscar_dados(ticker_input):
         if not lpa and pl and cotacao:
             lpa = cotacao / pl if pl > 0 else None
         
-        # Cálculo dos 3 modelos
+        # Cálculo dos 4 modelos
         valor_justo_graham = calcular_graham(lpa, vpa)
         valor_justo_bazin = calcular_bazin(dividendos)
         valor_justo_gordon = calcular_gordon(dividendos)
+        
+        # DCF será calculado na interface com parâmetros ajustáveis
+        # Por enquanto, apenas preparamos os dados
         
         margem_graham = calcular_margem_seguranca(cotacao, valor_justo_graham)
         margem_bazin = calcular_margem_seguranca(cotacao, valor_justo_bazin)
@@ -298,6 +364,11 @@ def buscar_dados(ticker_input):
             "pl": pl,
             "roe": roe,
             "dividendos": dividendos,
+            "ebit": ebit,
+            "capex": capex,
+            "depreciacao": depreciacao,
+            "divida_liquida": divida_liquida,
+            "num_acoes": num_acoes,
             "valor_justo_graham": valor_justo_graham,
             "valor_justo_bazin": valor_justo_bazin,
             "valor_justo_gordon": valor_justo_gordon,
@@ -321,13 +392,13 @@ def buscar_dados(ticker_input):
 # ============================================================
 
 st.title("📊 MULTI-VALUATION SYSTEM")
-st.markdown("*Graham • Bazin • Gordon*")
+st.markdown("*Graham • Bazin • Gordon • DCF*")
 st.markdown("---")
 
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/000000/investment.png", width=80)
     st.markdown("## 🔍 Análise de Investimentos")
-    st.markdown("### 3 Modelos de Valuation")
+    st.markdown("### 4 Modelos de Valuation")
     st.markdown("---")
     
     ticker = st.text_input("📈 Ticker da Ação", value="ITSA4", help="Ex: ITSA4, PETR4, VALE3")
@@ -343,6 +414,7 @@ with st.sidebar:
     st.markdown("**Graham:** √(22,5 × LPA × VPA)")
     st.markdown("**Bazin:** (Dividendo × 100) / 6")
     st.markdown("**Gordon:** D0 × (1+g) / (k-g)")
+    st.markdown("**DCF:** Fluxo de Caixa Descontado")
     st.markdown("---")
     st.markdown("### 📋 Exemplos")
     st.markdown("- ITSA4 (Itaúsa)")
@@ -351,7 +423,7 @@ with st.sidebar:
     st.markdown("- BBAS3 (Banco do Brasil)")
     st.markdown("---")
     st.markdown("### ℹ️ Sobre")
-    st.markdown("Valuation baseada em 3 metodologias")
+    st.markdown("Valuation baseada em 4 metodologias")
     st.markdown("Fonte: Yahoo Finance")
 
 if limpar:
@@ -372,7 +444,7 @@ if analisar:
         st.markdown("## 📊 MODELOS DE VALUATION")
         
         # Criar abas para cada modelo
-        tab1, tab2, tab3 = st.tabs(["📘 BENJAMIN GRAHAM", "💰 BAZIN (6%)", "📈 GORDON (GGM)"])
+        tab1, tab2, tab3, tab4 = st.tabs(["📘 BENJAMIN GRAHAM", "💰 BAZIN (6%)", "📈 GORDON (GGM)", "📉 DCF (Fluxo de Caixa)"])
         
         # ==================== ABA 1 - GRAHAM ====================
         with tab1:
@@ -463,28 +535,151 @@ if analisar:
                 else:
                     st.info("Velocímetro indisponível")
         
+        # ==================== ABA 4 - DCF ====================
+        with tab4:
+            st.markdown("### 📉 Valuation por Fluxo de Caixa Descontado (DCF)")
+            
+            # Verificar se há dados suficientes
+            if dados['ebit'] and dados['ebit'] > 0 and dados['num_acoes'] and dados['num_acoes'] > 0:
+                
+                # Parâmetros ajustáveis
+                st.markdown("#### ⚙️ Parâmetros do Modelo")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    crescimento_inicial = st.slider(
+                        "Crescimento inicial (anos 1-3)", 
+                        min_value=0.0, max_value=0.30, value=0.10, step=0.01,
+                        format="%.0f%%", help="Taxa de crescimento do FCF nos primeiros 3 anos"
+                    )
+                    
+                    crescimento_terminal = st.slider(
+                        "Crescimento terminal (anos 4-5)", 
+                        min_value=0.0, max_value=0.20, value=0.06, step=0.01,
+                        format="%.0f%%", help="Taxa de crescimento do FCF nos anos 4 e 5"
+                    )
+                
+                with col2:
+                    wacc = st.slider(
+                        "WACC (Custo de Capital)", 
+                        min_value=0.05, max_value=0.20, value=0.11, step=0.01,
+                        format="%.0f%%", help="Custo médio ponderado de capital"
+                    )
+                    
+                    crescimento_perpetuo = st.slider(
+                        "Crescimento perpétuo (g)", 
+                        min_value=0.0, max_value=0.05, value=0.03, step=0.005,
+                        format="%.1f%%", help="Taxa de crescimento para perpetuidade"
+                    )
+                
+                with col3:
+                    taxa_ir = st.slider(
+                        "Alíquota de IR", 
+                        min_value=0.20, max_value=0.40, value=0.34, step=0.01,
+                        format="%.0f%%", help="Alíquota de imposto de renda"
+                    )
+                    
+                    anos = st.selectbox(
+                        "Anos de projeção", 
+                        options=[3, 5, 7, 10], index=1,
+                        help="Horizonte de projeção dos fluxos"
+                    )
+                
+                # Calcular DCF com os parâmetros atuais
+                valor_dcf = calcular_dcf(
+                    ebit=dados['ebit'],
+                    capex=dados['capex'],
+                    depreciacao=dados['depreciacao'],
+                    divida_liquida=dados['divida_liquida'],
+                    num_acoes=dados['num_acoes'],
+                    taxa_ir=taxa_ir,
+                    crescimento_inicial=crescimento_inicial,
+                    crescimento_terminal=crescimento_terminal,
+                    wacc=wacc,
+                    crescimento_perpetuo=crescimento_perpetuo,
+                    anos=anos
+                )
+                
+                margem_dcf = calcular_margem_seguranca(dados['cotacao'], valor_dcf)
+                
+                st.markdown("---")
+                
+                # Resultados
+                col1, col2 = st.columns([1, 1])
+                
+                with col1:
+                    st.markdown("#### 📊 Resultado DCF")
+                    if valor_dcf:
+                        st.metric("Valor Justo", f"R$ {valor_dcf:.2f}")
+                        st.metric("Cotação Atual", f"R$ {dados['cotacao']:.2f}")
+                        st.metric("Margem de Segurança", f"{margem_dcf:+.1f}%")
+                        recomendacao_dcf, mensagem_dcf = calcular_recomendacao(margem_dcf)
+                        if recomendacao_dcf == "COMPRAR":
+                            st.success(f"✅ {recomendacao_dcf} - {mensagem_dcf}")
+                        elif recomendacao_dcf == "COMPRA PARCIAL":
+                            st.warning(f"⚠️ {recomendacao_dcf} - {mensagem_dcf}")
+                        elif recomendacao_dcf == "NEUTRO":
+                            st.info(f"⚖️ {recomendacao_dcf} - {mensagem_dcf}")
+                        else:
+                            st.error(f"❌ {recomendacao_dcf} - {mensagem_dcf}")
+                    else:
+                        st.warning("Não foi possível calcular o DCF com os parâmetros atuais. Verifique se o FCF é positivo.")
+                
+                with col2:
+                    if margem_dcf:
+                        fig_dcf = criar_velocimetro(margem_dcf, "MARGEM DCF")
+                        st.plotly_chart(fig_dcf, use_container_width=True)
+                    else:
+                        st.info("Velocímetro indisponível")
+                
+                # Dados utilizados
+                with st.expander("📋 Dados utilizados no cálculo DCF"):
+                    st.markdown(f"""
+                    - **EBIT (Lucro Operacional):** R$ {dados['ebit']:,.2f}
+                    - **CAPEX (Investimentos):** R$ {dados['capex']:,.2f}
+                    - **Depreciação:** R$ {dados['depreciacao']:,.2f}
+                    - **Dívida Líquida:** R$ {dados['divida_liquida']:,.2f}
+                    - **Número de Ações:** {dados['num_acoes']:,.0f}
+                    """)
+                    
+            else:
+                st.warning("⚠️ Dados insuficientes para calcular o DCF. O Yahoo Finance não forneceu EBIT ou número de ações para esta empresa.")
+                st.info("O modelo DCF funciona melhor para empresas com dados financeiros completos (ex: PETR4, VALE3, ITUB4).")
+        
         st.markdown("---")
         
         # ==================== MÉDIA E RECOMENDAÇÃO FINAL ====================
         st.markdown("## 🎯 SÍNTESE DA ANÁLISE")
         
-        # Calcula média dos valores justos (ignorando None)
-        valores_validos = []
-        if dados['valor_justo_graham']:
-            valores_validos.append(dados['valor_justo_graham'])
-        if dados['valor_justo_bazin']:
-            valores_validos.append(dados['valor_justo_bazin'])
-        if dados['valor_justo_gordon']:
-            valores_validos.append(dados['valor_justo_gordon'])
+        # Coletar valores justos disponíveis
+        valores_justos = []
+        modelos_nomes = []
         
-        if valores_validos:
-            media_valor_justo = sum(valores_validos) / len(valores_validos)
+        if dados['valor_justo_graham']:
+            valores_justos.append(dados['valor_justo_graham'])
+            modelos_nomes.append("Graham")
+        if dados['valor_justo_bazin']:
+            valores_justos.append(dados['valor_justo_bazin'])
+            modelos_nomes.append("Bazin")
+        if dados['valor_justo_gordon']:
+            valores_justos.append(dados['valor_justo_gordon'])
+            modelos_nomes.append("Gordon")
+        
+        # Adicionar DCF se disponível
+        if 'valor_dcf' in locals() and valor_dcf:
+            valores_justos.append(valor_dcf)
+            modelos_nomes.append("DCF")
+        
+        if valores_justos:
+            media_valor_justo = sum(valores_justos) / len(valores_justos)
             margem_media = ((media_valor_justo - dados['cotacao']) / media_valor_justo) * 100
             recomendacao_final, mensagem = calcular_recomendacao(margem_media)
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("📊 Média dos 3 Modelos", f"R$ {media_valor_justo:.2f}")
+                st.metric("📊 Média dos Modelos", f"R$ {media_valor_justo:.2f}")
+                st.caption(f"Baseado em: {', '.join(modelos_nomes)}")
             with col2:
                 st.metric("📈 Upside médio", f"{(media_valor_justo/dados['cotacao'] - 1)*100:+.1f}%")
             with col3:
@@ -546,7 +741,8 @@ if analisar:
         st.markdown("---")
         st.caption("""
         ⚠️ **DISCLAIMER:** Este relatório é gerado automaticamente com base em dados públicos. 
-        Os modelos de valuation (Graham, Bazin e Gordon) são ferramentas auxiliares de análise.
+        Os modelos de valuation (Graham, Bazin, Gordon e DCF) são ferramentas auxiliares de análise.
+        O modelo DCF é altamente sensível às premissas adotadas (crescimento, WACC, perpetuidade).
         Não constitui recomendação de investimento personalizada. O investidor é o único responsável 
         por suas decisões de alocação. Rentabilidade passada não representa garantia de retornos futuros.
         """)
@@ -554,21 +750,31 @@ if analisar:
         # ==================== DOWNLOAD ====================
         st.markdown("---")
         
-        df = pd.DataFrame({
-            "Modelo": ["Graham", "Bazin", "Gordon", "Média"],
+        # Preparar dados para download
+        dados_download = {
+            "Modelo": ["Graham", "Bazin", "Gordon"],
             "Valor Justo (R$)": [
                 f"{dados['valor_justo_graham']:.2f}" if dados['valor_justo_graham'] else "N/D",
                 f"{dados['valor_justo_bazin']:.2f}" if dados['valor_justo_bazin'] else "N/D",
-                f"{dados['valor_justo_gordon']:.2f}" if dados['valor_justo_gordon'] else "N/D",
-                f"{media_valor_justo:.2f}" if valores_validos else "N/D"
+                f"{dados['valor_justo_gordon']:.2f}" if dados['valor_justo_gordon'] else "N/D"
             ],
             "Margem (%)": [
                 f"{dados['margem_graham']:.1f}" if dados['margem_graham'] else "N/D",
                 f"{dados['margem_bazin']:.1f}" if dados['margem_bazin'] else "N/D",
-                f"{dados['margem_gordon']:.1f}" if dados['margem_gordon'] else "N/D",
-                f"{margem_media:.1f}" if valores_validos else "N/D"
+                f"{dados['margem_gordon']:.1f}" if dados['margem_gordon'] else "N/D"
             ]
-        })
+        }
+        
+        # Adicionar DCF se disponível
+        if 'valor_dcf' in locals() and valor_dcf:
+            dados_download["Modelo"].append("DCF")
+            dados_download["Valor Justo (R$)"].append(f"{valor_dcf:.2f}")
+            dados_download["Margem (%)"].append(f"{margem_dcf:.1f}" if margem_dcf else "N/D")
+            dados_download["Modelo"].append("Média")
+            dados_download["Valor Justo (R$)"].append(f"{media_valor_justo:.2f}" if valores_justos else "N/D")
+            dados_download["Margem (%)"].append(f"{margem_media:.1f}" if valores_justos else "N/D")
+        
+        df = pd.DataFrame(dados_download)
         
         csv = df.to_csv(index=False).encode('utf-8')
         st.download_button(
@@ -586,7 +792,7 @@ if analisar:
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: #8A8D91; font-size: 12px;'>"
-    "© Multi-Valuation System • Graham • Bazin • Gordon • Métodos de Benjamin Graham"
+    "© Multi-Valuation System • Graham • Bazin • Gordon • DCF • Métodos de Benjamin Graham"
     "</div>",
     unsafe_allow_html=True
 )
